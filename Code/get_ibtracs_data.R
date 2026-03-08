@@ -179,7 +179,7 @@ tc_daily_panel_centroids <- function(
   asymmetry = "Chen",
   verbose = 0,
   fill_zeros = TRUE
-) {
+  ){
 
   ## Do some input checks
 
@@ -370,7 +370,7 @@ tc_daily_panel_centroids <- function(
 
 }
 
-#### Function that calculates max winds by averaging (or taking max) raster windspeeds across a tract polygon
+#### Function that calculates max and mean wind speeds across tract polygons
 
 tc_daily_panel_from_tracks <- function(
   storm_list,
@@ -405,6 +405,7 @@ tc_daily_panel_from_tracks <- function(
     stop("`tracts` has no valid non-empty geometries after cleaning.")
   }
 
+  # Kept for backward compatibility with older calls; both stats are computed.
   tract_stat <- match.arg(tract_stat)
 
   # convert polygons to terra vector if needed
@@ -461,17 +462,18 @@ tc_daily_panel_from_tracks <- function(
   daily_dates <- sort(unique(day_local))
   names(daily_rast) <- paste0("d_", format(daily_dates, "%Y_%m_%d"))
 
-  # Collapse the raster to tract level
-  extract_fun <- switch(
-    tract_stat,
-    "max"  = max,
-    "mean" = mean
-  )
-
-  tract_vals <- terra::extract(
+  # Collapse the raster to tract level using both summaries.
+  tract_vals_max <- terra::extract(
     daily_rast,
     tracts_v,
-    fun = extract_fun,
+    fun = max,
+    na.rm = TRUE,
+    ID = TRUE
+  )
+  tract_vals_mean <- terra::extract(
+    daily_rast,
+    tracts_v,
+    fun = mean,
     na.rm = TRUE,
     ID = TRUE
   )
@@ -485,19 +487,35 @@ tc_daily_panel_from_tracks <- function(
 
   ## Building the panel
 
-  # Convert from wide format to long format
-  out <- tract_vals %>%
-    left_join(id_lookup, by = "ID") %>%
-    pivot_longer(
-      cols = starts_with("d_"),
-      names_to = "layer",
-      values_to = "tc_max_wind"
-    ) %>%
-    mutate(
-      date = as.Date(sub("^d_", "", layer), format = "%Y_%m_%d")
-    ) %>%
-    select(all_of(tract_id), date, tc_max_wind) %>%
+  # Convert from wide format to long format for each summary and join.
+  to_long <- function(dat, value_name) {
+    dat %>%
+      left_join(id_lookup, by = "ID") %>%
+      pivot_longer(
+        cols = starts_with("d_"),
+        names_to = "layer",
+        values_to = value_name
+      ) %>%
+      mutate(
+        date = as.Date(sub("^d_", "", layer), format = "%Y_%m_%d")
+      ) %>%
+      select(all_of(tract_id), date, all_of(value_name))
+  }
+
+  out_max <- to_long(tract_vals_max, "tc_poly_max_wind")
+  out_mean <- to_long(tract_vals_mean, "tc_poly_mean_wind")
+
+  out <- out_max %>%
+    full_join(out_mean, by = c(tract_id, "date")) %>%
     arrange(.data[[tract_id]], date)
+
+  # Optional date window restriction even when fill_zeros = FALSE.
+  if (!is.null(start_date)) {
+    out <- out %>% filter(date >= as.Date(start_date))
+  }
+  if (!is.null(end_date)) {
+    out <- out %>% filter(date <= as.Date(end_date))
+  }
 
   # Build a full tract x day panel and fill non-storm days with 0
   if (fill_zeros) {
@@ -510,15 +528,30 @@ tc_daily_panel_from_tracks <- function(
       !!tract_id := unique(id_lookup[[tract_id]]),
       date = full_dates
     )
-
     out <- full_panel %>%
       left_join(out, by = c(tract_id, "date")) %>%
       mutate(
-        tc_max_wind = dplyr::coalesce(tc_max_wind, 0),
-        tc_day = as.integer(tc_max_wind > 0)
+        tc_poly_max_wind = dplyr::coalesce(tc_poly_max_wind, 0),
+        tc_poly_mean_wind = dplyr::coalesce(tc_poly_mean_wind, 0),
+        tc_poly_day = as.integer(tc_poly_max_wind > 0 | tc_poly_mean_wind > 0)
       ) %>%
       arrange(.data[[tract_id]], date)
+  } else {
+    out <- out %>%
+      mutate(
+        tc_poly_day = dplyr::if_else(
+          is.na(tc_poly_max_wind) & is.na(tc_poly_mean_wind),
+          NA_integer_,
+          as.integer(
+            dplyr::coalesce(tc_poly_max_wind, 0) > 0 |
+            dplyr::coalesce(tc_poly_mean_wind, 0) > 0
+          )
+        )
+      )
   }
 
   return(out)
 }
+
+# Backward-compatible alias (historical typo in function name).
+tc_daily_panel_from_tracts <- tc_daily_panel_from_tracks
