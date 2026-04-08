@@ -1,3 +1,9 @@
+## Define NASA input_nasa_bearer token for blackmarble api ##
+input_nasa_bearer <- get_nasa_token(
+  username = Sys.getenv("NASA_USER"),
+  password = Sys.getenv("NASA_PASS")
+)
+
 #### This file essentially defines one function that extracts and prepares the blackmarble data ####
 #### The result is a panel for each day and each tract in puerto rico ####
 #### The data contains information on acttual light intensity and multiple quality flags 
@@ -7,12 +13,11 @@ build_bm_tract_panel <- function(
   tracts_sf,                                              # defines puerto rico as region of interest
   dates,
   bearer,
-  base_dir = file.path(getwd(), "Data", "bm_files"),
-  product_id = "VNP46A2",
+  product_id = "VNP46A2",         
   ntl_variable = "DNB_BRDF-Corrected_NTL",                # Set the non-gap filled data as standard
   quality_flag_rm = 2,                                    # 0: high-quality, persistent nighttime lights / 1: high-quality, ephermal nighttitme lights
   # Variables for QF_Cloud_Mask
-  cloud_quality_min = 2,  # 2 = medium, 3 = high (according to table 4, bits 4-5)
+  cloud_quality_min = 1,  # 2 = medium, 3 = high (according to table 4, bits 4-5)
   cloud_detect_ok = c(0,1), # 0 = confident clear, 1 = probably clear (according to table 4, bits 6-7)
   require_night = TRUE, # from bit 0: 0 = night, 1 = day
   exclude_shadow = TRUE, # from bit 8
@@ -20,7 +25,8 @@ build_bm_tract_panel <- function(
   exclude_snow_ice = TRUE, # from bit 10
   include_hq_share = TRUE,
   overwrite = FALSE,
-  quiet = TRUE
+  quiet = TRUE,
+  cache_key = NULL
 ) {
   #### Some checks and preparation ####
 
@@ -35,10 +41,115 @@ build_bm_tract_panel <- function(
       paste(miss, collapse = ", "))
   }
 
+  dates_expr <- paste(deparse(substitute(dates), width.cutoff = 500L), collapse = "")
+
+  dates <- tryCatch(
+    sort(unique(as.Date(dates))),
+    error = function(e) {
+      stop(
+        "`dates` must evaluate to valid Date values. ",
+        "The supplied expression was: ", dates_expr,
+        "\nOriginal error: ", conditionMessage(e),
+        call. = FALSE
+      )
+    }
+  )
+
+  if (any(is.na(dates))) {
+    stop("`dates` must contain valid Date values.")
+  }
+
+  if (!inherits(tracts_sf, "sf")) {
+    stop("`tracts_sf` must be an sf object.")
+  }
+
+  if (!("GEOID" %in% names(tracts_sf))) {
+    stop("`tracts_sf` must contain a `GEOID` column.")
+  }
+
+  if (anyDuplicated(tracts_sf$GEOID)) {
+    stop("`tracts_sf$GEOID` must be unique so the output panel has one row per geography and date.")
+  }
+
+  if (is.na(sf::st_crs(tracts_sf))) {
+    stop("`tracts_sf` must have a defined CRS. Black Marble extraction expects WGS84 (EPSG:4326).")
+  }
+
+  if (any(!sf::st_is_valid(tracts_sf))) {
+    if (!quiet) {
+      message("Repairing invalid geometries in `tracts_sf` before Black Marble extraction.")
+    }
+    tracts_sf <- sf::st_make_valid(tracts_sf)
+  }
+
+  if (any(sf::st_is_empty(tracts_sf))) {
+    stop("`tracts_sf` contains empty geometries after validation. Please remove or repair them before extraction.")
+  }
+
+  target_crs <- sf::st_crs(4326)
+  if (!isTRUE(sf::st_crs(tracts_sf) == target_crs)) {
+    if (!quiet) {
+      message("Transforming `tracts_sf` to WGS84 (EPSG:4326) for Black Marble extraction.")
+    }
+    tracts_sf <- sf::st_transform(tracts_sf, target_crs)
+  }
+
+  geom_types <- unique(as.character(sf::st_geometry_type(tracts_sf, by_geometry = TRUE)))
+  if (any(!geom_types %in% c("POLYGON", "MULTIPOLYGON"))) {
+    stop("`tracts_sf` must contain polygon geometries. Found: ", paste(sort(geom_types), collapse = ", "))
+  }
+
+  tracts_sf <- dplyr::arrange(tracts_sf, GEOID)
+
+  make_cache_key <- function() {
+    cache_seed <- list(
+      geoid = tracts_sf$GEOID,
+      geometry = sf::st_as_binary(sf::st_geometry(tracts_sf), EWKB = TRUE),
+      product_id = product_id,
+      ntl_variable = ntl_variable,
+      quality_flag_rm = as.integer(quality_flag_rm),
+      cloud_quality_min = as.integer(cloud_quality_min),
+      cloud_detect_ok = as.integer(cloud_detect_ok),
+      require_night = require_night,
+      exclude_shadow = exclude_shadow,
+      exclude_cirrus = exclude_cirrus,
+      exclude_snow_ice = exclude_snow_ice,
+      include_hq_share = include_hq_share
+    )
+
+    tf <- tempfile(fileext = ".rds")
+    saveRDS(cache_seed, tf)
+    key <- unname(tools::md5sum(tf))
+    unlink(tf)
+    key
+  }
+
+  sanitize_cache_key <- function(x) {
+    x <- gsub("[^A-Za-z0-9_-]+", "_", x)
+    x <- gsub("_+", "_", x)
+    x <- gsub("^_|_$", "", x)
+    if (!nzchar(x)) {
+      x <- "bm_panel"
+    }
+    x
+  }
+
+  auto_cache_key <- paste0(
+    "bm_",
+    substr(make_cache_key(), 1, 12),
+    "_",
+    substr(sanitize_cache_key(ntl_variable), 1, 30),
+    "_n",
+    nrow(tracts_sf)
+  )
+  cache_key <- sanitize_cache_key(if (is.null(cache_key)) auto_cache_key else cache_key)
+
   ## Create directories (if they don't already exist) ##
+  
+  base_dir <- file.path(getwd(), "Data/bm_files")
   dir.create(base_dir, recursive = TRUE, showWarnings = FALSE)
   h5_dir <- file.path(base_dir, "h5")
-  out_dir <- file.path(base_dir, "tract_day")
+  out_dir <- file.path(base_dir, "tract_day", cache_key)
   ntl_dir <- file.path(out_dir, "ntl_daily")
   cloud_dir <- file.path(out_dir, "cloud_daily")
   hq_dir <- file.path(out_dir, "hq_daily")
@@ -59,11 +170,31 @@ build_bm_tract_panel <- function(
         "[%s] %s\n", 
         format(Sys.time(), "%F %T"), 
         paste0(...)
-      ), 
-      file = log_file, 
-      append = TRUE
+      )
     )
   }
+
+  manifest <- list(
+    cache_key = cache_key,
+    product_id = product_id,
+    ntl_variable = ntl_variable,
+    quality_flag_rm = quality_flag_rm,
+    cloud_quality_min = cloud_quality_min,
+    cloud_detect_ok = cloud_detect_ok,
+    require_night = require_night,
+    exclude_shadow = exclude_shadow,
+    exclude_cirrus = exclude_cirrus,
+    exclude_snow_ice = exclude_snow_ice,
+    include_hq_share = include_hq_share,
+    n_geographies = nrow(tracts_sf),
+    geoid_sample = utils::head(tracts_sf$GEOID, 10),
+    bbox_wgs84 = unclass(sf::st_bbox(tracts_sf)),
+    date_min = min(dates),
+    date_max = max(dates),
+    created_at = Sys.time(),
+    log_file = log_file
+  )
+  saveRDS(manifest, file.path(out_dir, "run_manifest.rds"))
 
   ## Set up helper functinos (mainly Define helper functions to extract information from bitmask QF_Cloud_Mask) ##
 
@@ -125,32 +256,103 @@ build_bm_tract_panel <- function(
     as.integer(ok)
   }
 
+  normalize_ntl_stats <- function(df) {
+    needed <- c("ntl_mean", "ntl_median", "n_non_na_pixels")
+    if (!all(needed %in% names(df))) {
+      return(df)
+    }
+
+    zero_valid <- dplyr::coalesce(df$n_non_na_pixels, 0) == 0
+
+    if ("prop_non_na_pixels" %in% names(df)) {
+      zero_valid <- zero_valid | (dplyr::coalesce(df$prop_non_na_pixels, 0) == 0)
+    }
+
+    if ("valid_pixel_share" %in% names(df)) {
+      zero_valid <- zero_valid | (dplyr::coalesce(df$valid_pixel_share, 0) == 0)
+    }
+
+    df %>%
+      dplyr::mutate(
+        ntl_mean = ifelse(zero_valid | is.nan(ntl_mean), NA_real_, ntl_mean),
+        ntl_median = ifelse(zero_valid | is.nan(ntl_median), NA_real_, ntl_median)
+      )
+  }
+
+  is_missing_imagery_warning <- function(msg, date_i) {
+    grepl(
+      paste0("No satellite imagery exists for ", format(as.Date(date_i), "%Y-%m-%d")),
+      msg,
+      fixed = TRUE
+    )
+  }
+
+  empty_ntl_day <- function(date_i) {
+    dplyr::tibble(
+      GEOID = tracts_sf$GEOID,
+      date = as.Date(date_i),
+      ntl_mean = NA_real_,
+      ntl_median = NA_real_,
+      valid_pixel_share = NA_real_,
+      n_pixels = NA_real_,
+      n_non_na_pixels = NA_real_
+    )
+  }
+
+  empty_share_day <- function(date_i, value_name) {
+    out <- dplyr::tibble(
+      GEOID = tracts_sf$GEOID,
+      date = as.Date(date_i)
+    )
+    out[[value_name]] <- NA_real_
+    out
+  }
+
   extract_ntl_one_day <- function(date_i) {
-    f <- file.path(ntl_dir, paste0("ntl_", date_i, ".rds"))
+    date_tag <- format(as.Date(date_i), "%Y-%m-%d")
+    f <- file.path(ntl_dir, paste0("ntl_", date_tag, ".rds"))
     # skip extraction if file already exists
     if (!overwrite && file.exists(f)) {
       # returns true without printing it to the console
       return(invisible(TRUE))
     }
 
+    missing_imagery <- FALSE
     res <- tryCatch({
-      x <- blackmarbler::bm_extract(
-        roi_sf = tracts_sf,
-        product_id = product_id,
-        date = as.Date(date_i),
-        bearer = bearer,
-        variable = ntl_variable,
-        # Aggregate according to roi_sf (i.e. points are aggregated for each mun)
-        aggregation_fun = c("mean", "median"),
-        # Gives us a proportion of non na pixels
-        add_n_pixels = TRUE,
-        quality_flag_rm = quality_flag_rm,   
-        # or (after inspecting values) quality_flag_rm = c(1,2,3,4,5) for only qf==0
-        output_location_type = "memory",
-        download_method = "httr",
-        h5_dir = h5_dir,
-        quiet = quiet
+      x <- withCallingHandlers(
+        blackmarbler::bm_extract(
+          roi_sf = tracts_sf,
+          product_id = product_id,
+          date = as.Date(date_i),
+          bearer = bearer,
+          variable = ntl_variable,
+          # Aggregate according to roi_sf (i.e. points are aggregated for each mun)
+          aggregation_fun = c("mean", "median"),
+          # Gives us a proportion of non na pixels
+          add_n_pixels = TRUE,
+          quality_flag_rm = quality_flag_rm,   
+          # or (after inspecting values) quality_flag_rm = c(1,2,3,4,5) for only qf==0
+          output_location_type = "memory",
+          download_method = "httr",
+          h5_dir = h5_dir,
+          quiet = quiet
+        ),
+        warning = function(w) {
+          if (is_missing_imagery_warning(conditionMessage(w), date_i)) {
+            missing_imagery <<- TRUE
+            invokeRestart("muffleWarning")
+          }
+        }
       )
+
+      if (missing_imagery || is.null(x) || nrow(x) == 0) {
+        x_out <- empty_ntl_day(date_i)
+        saveRDS(x_out, f)
+        log_line("NTL missing imagery for ", date_i, "; wrote NA rows.")
+        return(TRUE)
+      }
+
+      x <- normalize_ntl_stats(x)
 
       x_out <- mutate(
         x,
@@ -169,6 +371,12 @@ build_bm_tract_panel <- function(
       return(TRUE)
     # What happens when an error occurs
     }, error = function(e) {
+      if (missing_imagery) {
+        x_out <- empty_ntl_day(date_i)
+        saveRDS(x_out, f)
+        log_line("NTL missing imagery for ", date_i, "; wrote NA rows.")
+        return(TRUE)
+      }
       log_line("NTL failed for ", date_i, ": ", conditionMessage(e))
       # Return false if something went wrong
       return(FALSE)
@@ -179,24 +387,41 @@ build_bm_tract_panel <- function(
 
   extract_cloud_one_day <- function(date_i) {
     # For each day compute the share of cloud free pixels inside each polygon (mun)
-    f <- file.path(cloud_dir, paste0("cloud_", date_i, ".rds"))
+    date_tag <- format(as.Date(date_i), "%Y-%m-%d")
+    f <- file.path(cloud_dir, paste0("cloud_", date_tag, ".rds"))
     if (!overwrite && file.exists(f)) {
       return(invisible(TRUE))
     }
 
+    missing_imagery <- FALSE
     res <- tryCatch({
       # qf_r is an integer raster where each pixel is an integer / bit flag that encodes cloud-related information in its bits
-      qf_r <- blackmarbler::bm_raster(
-        roi_sf = tracts_sf,
-        product_id = product_id,
-        date = as.Date(date_i),
-        bearer = bearer,
-        variable = "QF_Cloud_Mask",
-        output_location_type = "memory",
-        download_method = "httr",
-        h5_dir = h5_dir,
-        quiet = quiet
+      qf_r <- withCallingHandlers(
+        blackmarbler::bm_raster(
+          roi_sf = tracts_sf,
+          product_id = product_id,
+          date = as.Date(date_i),
+          bearer = bearer,
+          variable = "QF_Cloud_Mask",
+          output_location_type = "memory",
+          download_method = "httr",
+          h5_dir = h5_dir,
+          quiet = quiet
+        ),
+        warning = function(w) {
+          if (is_missing_imagery_warning(conditionMessage(w), date_i)) {
+            missing_imagery <<- TRUE
+            invokeRestart("muffleWarning")
+          }
+        }
       )[[1]]
+
+      if (missing_imagery || is.null(qf_r)) {
+        out <- empty_share_day(date_i, "cloud_free_share")
+        saveRDS(out, f)
+        log_line("CLOUD missing imagery for ", date_i, "; wrote NA rows.")
+        return(TRUE)
+      }
 
       qf_vals <- terra::values(qf_r, mat = FALSE)
       cf_vals <- ifelse(is.na(qf_vals), NA_integer_, cloud_free_indicator(qf_vals))
@@ -215,6 +440,12 @@ build_bm_tract_panel <- function(
       saveRDS(out, f)
       return(TRUE)
     }, error = function(e) {
+      if (missing_imagery) {
+        out <- empty_share_day(date_i, "cloud_free_share")
+        saveRDS(out, f)
+        log_line("CLOUD missing imagery for ", date_i, "; wrote NA rows.")
+        return(TRUE)
+      }
       log_line("CLOUD failed for ", date_i, ": ", conditionMessage(e))
       return(FALSE)
     }
@@ -229,25 +460,42 @@ build_bm_tract_panel <- function(
       return(invisible(TRUE))
     }
 
-    f <- file.path(hq_dir, paste0("hq_", date_i, ".rds"))
+    date_tag <- format(as.Date(date_i), "%Y-%m-%d")
+    f <- file.path(hq_dir, paste0("hq_", date_tag, ".rds"))
 
     if (!overwrite && file.exists(f)) {
       return(invisible(TRUE))
     }
 
+    missing_imagery <- FALSE
     res <- tryCatch({
       # qf_r is an integer raster where each pixel is an integer / bit flag that encodes cloud-related information in its bits
-      mqf_r <- blackmarbler::bm_raster(
-        roi_sf = tracts_sf,
-        product_id = product_id,
-        date = as.Date(date_i),
-        bearer = bearer,
-        variable = "Mandatory_Quality_Flag",
-        output_location_type = "memory",
-        download_method = "httr",
-        h5_dir = h5_dir,
-        quiet = quiet
+      mqf_r <- withCallingHandlers(
+        blackmarbler::bm_raster(
+          roi_sf = tracts_sf,
+          product_id = product_id,
+          date = as.Date(date_i),
+          bearer = bearer,
+          variable = "Mandatory_Quality_Flag",
+          output_location_type = "memory",
+          download_method = "httr",
+          h5_dir = h5_dir,
+          quiet = quiet
+        ),
+        warning = function(w) {
+          if (is_missing_imagery_warning(conditionMessage(w), date_i)) {
+            missing_imagery <<- TRUE
+            invokeRestart("muffleWarning")
+          }
+        }
       )[[1]]
+
+      if (missing_imagery || is.null(mqf_r)) {
+        out <- empty_share_day(date_i, "hq_share")
+        saveRDS(out, f)
+        log_line("HQ missing imagery for ", date_i, "; wrote NA rows.")
+        return(TRUE)
+      }
 
       mqf_vals <- terra::values(mqf_r, mat = FALSE)
       # Note 255 is basically defined as NA, 00/01 high quality, 02 poor quality
@@ -267,6 +515,12 @@ build_bm_tract_panel <- function(
       saveRDS(out, f)
       return(TRUE)
     }, error = function(e) {
+      if (missing_imagery) {
+        out <- empty_share_day(date_i, "hq_share")
+        saveRDS(out, f)
+        log_line("HQ missing imagery for ", date_i, "; wrote NA rows.")
+        return(TRUE)
+      }
       log_line("HQ failed for ", date_i, ": ", conditionMessage(e))
       return(FALSE)
     }
@@ -277,9 +531,9 @@ build_bm_tract_panel <- function(
 
   ## Run actual extraction ##
 
-  log_line("Starting build for ", length(dates), " dates. Output: ", out_dir)
+  log_line("Starting build for ", length(dates), " dates. Cache key: ", cache_key, ". Output: ", out_dir)
 
-  for (d in dates) {
+  for (d in as.list(dates)) {
     log_line("Processing ", d)
     extract_ntl_one_day(d)
     extract_cloud_one_day(d)
@@ -288,17 +542,46 @@ build_bm_tract_panel <- function(
 
   ## Combine files into one final panel ##
 
-  read_all <- function(dir_path, pattern_prefix) {
-    fs <- list.files(dir_path, pattern = paste0("^", pattern_prefix, ".*\\.rds$"), full.names = TRUE)
+  check_missing_files <- function(dir_path, pattern_prefix, dates_use, label) {
+    expected <- file.path(
+      dir_path,
+      paste0(pattern_prefix, format(as.Date(dates_use), "%Y-%m-%d"), ".rds")
+    )
+    missing <- expected[!file.exists(expected)]
+
+    if (length(missing) > 0) {
+      missing_tags <- sub(paste0("^", dir_path, "/?", pattern_prefix), "", missing)
+      missing_tags <- sub("\\.rds$", "", missing_tags)
+      stop(
+        label, " extraction is incomplete for ", length(missing), " requested date(s): ",
+        paste(missing_tags, collapse = ", "),
+        "\nCheck log file(s) in: ", logs_dir
+      )
+    }
+  }
+
+  check_missing_files(ntl_dir, "ntl_", dates, "NTL")
+  check_missing_files(cloud_dir, "cloud_", dates, "Cloud")
+  if (include_hq_share) {
+    check_missing_files(hq_dir, "hq_", dates, "HQ")
+  }
+
+  read_all <- function(dir_path, pattern_prefix, dates_use) {
+    fs <- file.path(
+      dir_path,
+      paste0(pattern_prefix, format(as.Date(dates_use), "%Y-%m-%d"), ".rds")
+    )
+    fs <- fs[file.exists(fs)]
     if (length(fs) == 0) {
       return(dplyr::tibble())    
     }
     purrr::map_df(fs, readRDS)
   }
 
-  ntl_panel <- read_all(ntl_dir, "ntl_")
-  cloud_panel <- read_all(cloud_dir, "cloud_")
-  hq_panel <- if (include_hq_share) read_all(hq_dir, "hq_") else dplyr::tibble()
+  ntl_panel <- read_all(ntl_dir, "ntl_", dates) %>%
+    normalize_ntl_stats()
+  cloud_panel <- read_all(cloud_dir, "cloud_", dates)
+  hq_panel <- if (include_hq_share) read_all(hq_dir, "hq_", dates) else dplyr::tibble()
 
   # Some diagnostics to find the problem
   if (!all(c("GEOID","date") %in% names(ntl_panel))) {
@@ -315,7 +598,7 @@ build_bm_tract_panel <- function(
     { if (include_hq_share) dplyr::left_join(., hq_panel, by = c("GEOID", "date")) else . } %>%
     dplyr::arrange(GEOID, date)
 
-  final_path <- file.path(out_dir, "pr_tract_day_panel.rds")
+  final_path <- file.path(out_dir, "bm_panel.rds")
   saveRDS(panel, final_path)
   log_line("Finished. Final panel saved to: ", final_path)
 

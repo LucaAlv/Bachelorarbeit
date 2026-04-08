@@ -372,7 +372,7 @@ tc_daily_panel_centroids <- function(
 
 #### Function that calculates max and mean wind speeds across tract polygons
 
-tc_daily_panel_from_tracks <- function(
+tc_daily_panel_from_tracts <- function(
   storm_list,
   tracts,
   tract_id = "GEOID",
@@ -392,7 +392,7 @@ tc_daily_panel_from_tracks <- function(
   # Check storms List 
   if (!inherits(storm_list, "stormsList")) {
     stop(
-      "`storm_list` must be a StormR stormsList object (output of defStormsList()). ",
+      "storm_list must be a StormR stormsList object (output of defStormsList()). ",
       "Current class: ", paste(class(storm_list), collapse = ", ")
     )
   }
@@ -402,7 +402,25 @@ tc_daily_panel_from_tracks <- function(
     st_make_valid() %>%
     filter(!st_is_empty(geometry))
   if (nrow(tracts) == 0) {
-    stop("`tracts` has no valid non-empty geometries after cleaning.")
+    stop("tracts has no valid non-empty geometries after cleaning.")
+  }
+
+  # Fix weird bug 
+  # StormR temporal interpolation fails for storms with <2 observations
+  # inside the area of interest (e.g., lenData = 1 in stormDisplacement).
+  keep_storm <- vapply(storm_list@data, function(st) {
+    length(st@obs) >= 2
+  }, logical(1))
+  if (!all(keep_storm)) {
+    dropped <- names(storm_list@data)[!keep_storm]
+    warning(
+      "Dropping storms with fewer than 2 observations in the AOI: ",
+      paste(dropped, collapse = ", ")
+    )
+    storm_list@data <- storm_list@data[keep_storm]
+  }
+  if (length(storm_list@data) == 0) {
+    stop("No storms with at least 2 observations are available for temporal modelling.")
   }
 
   # Kept for backward compatibility with older calls; both stats are computed.
@@ -415,69 +433,6 @@ tc_daily_panel_from_tracks <- function(
     stop(sprintf( "Column '%s' not found in the provided tracts data.", tract_id))
   }
 
-  # Compute the time-varying wind fields
-  pf <- spatialBehaviour(
-    storm_list,
-    product = "Profiles",
-    method = method,
-    asymmetry = asymmetry,
-    tempRes = tempRes,
-    verbose = verbose
-  )
-
-  # Extract the speed layers (i.e. drop the direction layers)
-  speed_idx <- grep("_Speed_", names(pf))
-  if (length(speed_idx) == 0) {
-    stop("No speed layers found in the StormR output.")
-  }
-  wind_speed <- pf[[speed_idx]]
-
-  # Extract timestamps from the wind speed raster stack
-  times_utc <- terra::time(wind_speed)
-  if (length(times_utc) == 0 || all(is.na(times_utc))) {
-    stop("No timestamps found on the speed layers. Check `terra::time(wind_speed)`.")
-  }
-
-  # Convert layer timestamps to local calendar day
-  day_local <- as.Date(
-    format(as.POSIXct(times_utc, tz = "UTC"), tz = tz, usetz = FALSE)
-  )
-
-  # Calculate the daily raster of max windspeeds, i.e. for each cell calculate the max speed reached that day
-  daily_rast <- terra::tapp(
-    wind_speed,
-    index = day_local,
-    fun = max,
-    na.rm = TRUE
-  )
-
-  # StormR profiles are often on 0..360 longitude while tract geometries are
-  # usually on -180..180. Align the raster to avoid all-NA extraction.
-  ext_r <- terra::ext(daily_rast)
-  ext_v <- terra::ext(tracts_v)
-  if (ext_r$xmin >= 0 && ext_v$xmin < 0) {
-    daily_rast <- terra::rotate(daily_rast)
-  }
-
-  daily_dates <- sort(unique(day_local))
-  names(daily_rast) <- paste0("d_", format(daily_dates, "%Y_%m_%d"))
-
-  # Collapse the raster to tract level using both summaries.
-  tract_vals_max <- terra::extract(
-    daily_rast,
-    tracts_v,
-    fun = max,
-    na.rm = TRUE,
-    ID = TRUE
-  )
-  tract_vals_mean <- terra::extract(
-    daily_rast,
-    tracts_v,
-    fun = mean,
-    na.rm = TRUE,
-    ID = TRUE
-  )
-
   # build quick tract ID lookup
   id_lookup <- data.frame(
     ID = seq_len(nrow(tracts_v)),
@@ -485,44 +440,186 @@ tc_daily_panel_from_tracks <- function(
   )
   names(id_lookup)[2] <- tract_id
 
-  ## Building the panel
+  start_date_in <- if (is.null(start_date)) NULL else as.Date(start_date)
+  end_date_in <- if (is.null(end_date)) NULL else as.Date(end_date)
+  storm_verbose <- if (verbose > 1) verbose - 1 else 0
+  # Small batches avoid building one massive StormR raster object for the
+  # entire AOI/time span, which is what caused the crash on the full panel run.
+  storm_chunk_size <- 5L
 
-  # Convert from wide format to long format for each summary and join.
-  to_long <- function(dat, value_name) {
-    dat %>%
-      left_join(id_lookup, by = "ID") %>%
-      pivot_longer(
-        cols = starts_with("d_"),
-        names_to = "layer",
-        values_to = value_name
-      ) %>%
-      mutate(
-        date = as.Date(sub("^d_", "", layer), format = "%Y_%m_%d")
-      ) %>%
-      select(all_of(tract_id), date, all_of(value_name))
+  build_daily_raster <- function(storm_subset) {
+    pf <- spatialBehaviour(
+      storm_subset,
+      product = "Profiles",
+      method = method,
+      asymmetry = asymmetry,
+      tempRes = tempRes,
+      verbose = storm_verbose
+    )
+
+    speed_idx <- grep("_Speed_", names(pf))
+    if (length(speed_idx) == 0) {
+      stop("No speed layers found in the StormR output.")
+    }
+    wind_speed <- pf[[speed_idx]]
+
+    times_utc <- terra::time(wind_speed)
+    if (length(times_utc) == 0 || all(is.na(times_utc))) {
+      stop("No timestamps found on the speed layers. Check `terra::time(wind_speed)`.")
+    }
+
+    day_local <- as.Date(
+      format(as.POSIXct(times_utc, tz = "UTC"), tz = tz, usetz = FALSE)
+    )
+
+    daily_dates <- sort(unique(day_local))
+    keep_dates <- rep(TRUE, length(daily_dates))
+    if (!is.null(start_date_in)) keep_dates <- keep_dates & daily_dates >= start_date_in
+    if (!is.null(end_date_in)) keep_dates <- keep_dates & daily_dates <= end_date_in
+    if (!any(keep_dates)) {
+      return(NULL)
+    }
+
+    daily_rast <- terra::tapp(
+      wind_speed,
+      index = day_local,
+      fun = max,
+      na.rm = TRUE
+    )
+
+    ext_r <- terra::ext(daily_rast)
+    ext_v <- terra::ext(tracts_v)
+    if (ext_r$xmin >= 0 && ext_v$xmin < 0) {
+      daily_rast <- terra::rotate(daily_rast)
+    }
+
+    daily_rast <- daily_rast[[keep_dates]]
+    daily_dates <- daily_dates[keep_dates]
+    names(daily_rast) <- paste0("d_", format(daily_dates, "%Y_%m_%d"))
+
+    daily_rast
   }
 
-  out_max <- to_long(tract_vals_max, "tc_poly_max_wind")
-  out_mean <- to_long(tract_vals_mean, "tc_poly_mean_wind")
+  merge_daily_layers <- function(existing, incoming) {
+    if (is.null(existing)) {
+      return(incoming)
+    }
+    merged <- terra::mosaic(existing, incoming, fun = "max")
+    names(merged) <- names(existing)
+    merged
+  }
 
-  out <- out_max %>%
-    full_join(out_mean, by = c(tract_id, "date")) %>%
-    arrange(.data[[tract_id]], date)
+  daily_layers <- list()
+  storm_idx <- seq_along(storm_list@data)
+  storm_chunks <- split(
+    storm_idx,
+    ceiling(storm_idx / storm_chunk_size)
+  )
+
+  for (i in seq_along(storm_chunks)) {
+    idx <- storm_chunks[[i]]
+    storm_subset <- storm_list
+    storm_subset@data <- storm_list@data[idx]
+
+    if (verbose > 0) {
+      message(
+        sprintf(
+          "tc_daily_panel_from_tracts: processing chunk %d/%d (storms %d-%d)",
+          i,
+          length(storm_chunks),
+          idx[[1]],
+          idx[[length(idx)]]
+        )
+      )
+    }
+
+    storm_daily <- build_daily_raster(storm_subset)
+    if (is.null(storm_daily)) {
+      next
+    }
+
+    for (j in seq_len(terra::nlyr(storm_daily))) {
+      layer_name <- names(storm_daily)[j]
+      daily_layers[[layer_name]] <- merge_daily_layers(
+        daily_layers[[layer_name]],
+        storm_daily[[j]]
+      )
+    }
+
+    gc(verbose = FALSE)
+  }
+
+  day_names <- sort(names(daily_layers))
+  out_list <- vector("list", length(day_names))
+
+  for (i in seq_along(day_names)) {
+    layer_name <- day_names[[i]]
+    date_value <- as.Date(sub("^d_", "", layer_name), format = "%Y_%m_%d")
+    day_rast <- daily_layers[[layer_name]]
+
+    tract_vals_max <- terra::extract(
+      day_rast,
+      tracts_v,
+      fun = max,
+      na.rm = TRUE,
+      ID = TRUE
+    )
+    tract_vals_mean <- terra::extract(
+      day_rast,
+      tracts_v,
+      fun = mean,
+      na.rm = TRUE,
+      ID = TRUE
+    )
+
+    names(tract_vals_max)[2] <- "tc_poly_max_wind"
+    names(tract_vals_mean)[2] <- "tc_poly_mean_wind"
+
+    out_list[[i]] <- tract_vals_max %>%
+      left_join(tract_vals_mean, by = "ID") %>%
+      left_join(id_lookup, by = "ID") %>%
+      mutate(date = date_value) %>%
+      select(all_of(tract_id), date, tc_poly_max_wind, tc_poly_mean_wind)
+
+    if (verbose > 0 && (i %% 25 == 0 || i == length(day_names))) {
+      message(
+        sprintf(
+          "tc_daily_panel_from_tracts: extracted %d/%d storm days",
+          i,
+          length(day_names)
+        )
+      )
+    }
+
+    gc(verbose = FALSE)
+  }
+
+  if (length(out_list) == 0) {
+    out <- tibble::tibble(
+      !!tract_id := character(),
+      date = as.Date(character()),
+      tc_poly_max_wind = numeric(),
+      tc_poly_mean_wind = numeric()
+    )
+  } else {
+    out <- bind_rows(out_list) %>%
+      arrange(.data[[tract_id]], date)
+  }
 
   # Optional date window restriction even when fill_zeros = FALSE.
-  if (!is.null(start_date)) {
-    out <- out %>% filter(date >= as.Date(start_date))
+  if (!is.null(start_date_in)) {
+    out <- out %>% filter(date >= start_date_in)
   }
-  if (!is.null(end_date)) {
-    out <- out %>% filter(date <= as.Date(end_date))
+  if (!is.null(end_date_in)) {
+    out <- out %>% filter(date <= end_date_in)
   }
 
   # Build a full tract x day panel and fill non-storm days with 0
   if (fill_zeros) {
-    if (is.null(start_date)) start_date <- min(out$date, na.rm = TRUE)
-    if (is.null(end_date))   end_date   <- max(out$date, na.rm = TRUE)
+    if (is.null(start_date_in)) start_date_in <- min(out$date, na.rm = TRUE)
+    if (is.null(end_date_in))   end_date_in   <- max(out$date, na.rm = TRUE)
 
-    full_dates <- seq.Date(as.Date(start_date), as.Date(end_date), by = "day")
+    full_dates <- seq.Date(start_date_in, end_date_in, by = "day")
 
     full_panel <- tidyr::expand_grid(
       !!tract_id := unique(id_lookup[[tract_id]]),
@@ -552,6 +649,3 @@ tc_daily_panel_from_tracks <- function(
 
   return(out)
 }
-
-# Backward-compatible alias (historical typo in function name).
-tc_daily_panel_from_tracts <- tc_daily_panel_from_tracks
