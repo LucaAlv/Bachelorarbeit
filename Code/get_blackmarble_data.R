@@ -25,6 +25,7 @@ build_bm_tract_panel <- function(
   exclude_snow_ice = TRUE, # from bit 10
   include_hq_share = TRUE,
   overwrite = FALSE,
+  delete_downloads = FALSE,                                # delete raw H5 downloads after a date is fully cached
   quiet = TRUE,
   cache_key = NULL
 ) {
@@ -186,6 +187,7 @@ build_bm_tract_panel <- function(
     exclude_cirrus = exclude_cirrus,
     exclude_snow_ice = exclude_snow_ice,
     include_hq_share = include_hq_share,
+    delete_downloads = delete_downloads,
     n_geographies = nrow(tracts_sf),
     geoid_sample = utils::head(tracts_sf$GEOID, 10),
     bbox_wgs84 = unclass(sf::st_bbox(tracts_sf)),
@@ -306,6 +308,59 @@ build_bm_tract_panel <- function(
     )
     out[[value_name]] <- NA_real_
     out
+  }
+
+  expected_day_output_files <- function(date_i) {
+    date_tag <- format(as.Date(date_i), "%Y-%m-%d")
+    files <- c(
+      file.path(ntl_dir, paste0("ntl_", date_tag, ".rds")),
+      file.path(cloud_dir, paste0("cloud_", date_tag, ".rds"))
+    )
+
+    if (include_hq_share) {
+      files <- c(files, file.path(hq_dir, paste0("hq_", date_tag, ".rds")))
+    }
+
+    files
+  }
+
+  cleanup_downloads_for_day <- function(date_i) {
+    if (!delete_downloads) {
+      return(invisible(0L))
+    }
+
+    expected_files <- expected_day_output_files(date_i)
+    if (!all(file.exists(expected_files))) {
+      log_line(
+        "Skipping H5 cleanup for ", as.Date(date_i),
+        " because one or more daily outputs are missing."
+      )
+      return(invisible(0L))
+    }
+
+    date_id <- format(as.Date(date_i), "%Y%j")
+    pattern <- paste0("^", product_id, "\\.A", date_id, "\\..*\\.h5$")
+    h5_files <- list.files(h5_dir, pattern = pattern, full.names = TRUE)
+
+    if (length(h5_files) == 0) {
+      return(invisible(0L))
+    }
+
+    unlink(h5_files, force = TRUE)
+    n_deleted <- sum(!file.exists(h5_files))
+
+    if (n_deleted > 0) {
+      log_line("Deleted ", n_deleted, " downloaded H5 file(s) for ", as.Date(date_i), ".")
+    }
+
+    if (n_deleted < length(h5_files)) {
+      log_line(
+        "Some H5 files could not be deleted for ", as.Date(date_i),
+        "; check permissions in ", h5_dir
+      )
+    }
+
+    invisible(n_deleted)
   }
 
   extract_ntl_one_day <- function(date_i) {
@@ -538,6 +593,7 @@ build_bm_tract_panel <- function(
     extract_ntl_one_day(d)
     extract_cloud_one_day(d)
     extract_hq_one_day(d)
+    cleanup_downloads_for_day(d)
   }
 
   ## Combine files into one final panel ##
