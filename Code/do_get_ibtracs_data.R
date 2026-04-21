@@ -39,7 +39,7 @@ storms_list <- defStormsList(sds = storm_data_set, loi = loi_all) %>%
 
 # centroid based
 
-if (!file.exists("Output/ibtracs_output/storm_measures_centroid.rds")) {
+if (!file.exists("Data/ibtracs_files/panels/storm_measures_centroid.rds")) {
 
   storm_measures_centroid <- tc_daily_panel_centroids(
     storm_list = storms_list,
@@ -50,13 +50,13 @@ if (!file.exists("Output/ibtracs_output/storm_measures_centroid.rds")) {
     fill_zeros = TRUE
   )
 
-  saveRDS(storm_measures_centroid, "Output/ibtracs_output/storm_measures_centroid.rds")
+  saveRDS(storm_measures_centroid, "Data/ibtracs_files/panels/storm_measures_centroid.rds")
 
 }
 
 # polygon (so for whole county) based
 
-if (!file.exists("Output/ibtracs_output/storm_measures_whole_county.rds")) {
+if (!file.exists("Data/ibtracs_files/panels/storm_measures_whole_county.rds")) {
 
   storm_measures_whole_county <- tc_daily_panel_from_tracts(
     storm_list = storms_list,
@@ -67,6 +67,6 @@ if (!file.exists("Output/ibtracs_output/storm_measures_whole_county.rds")) {
     fill_zeros = TRUE
   )
   
-  saveRDS(storm_measures_whole_county, "Output/ibtracs_output/storm_measures_whole_county.rds")
+  saveRDS(storm_measures_whole_county, "Data/ibtracs_files/panels/storm_measures_whole_county.rds")
 
 }

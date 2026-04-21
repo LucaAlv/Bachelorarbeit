@@ -142,7 +142,7 @@ if (!file.exists("Output/ibtracs_output/storm_measures_centroid.rds") | !file.ex
 
 ## Load data and create yearly panels
 
-storm_measures_centroid_raw <- readRDS("Output/ibtracs_output/storm_measures_centroid.rds")
+storm_measures_centroid_raw <- readRDS("Data/ibtracs_files/panels/storm_measures_centroid.rds")
 
 storm_measures_centroid_weekly_allus_2010_2025 <- storm_measures_centroid_raw %>%
   mutate(
@@ -177,11 +177,11 @@ storm_measures_centroid_weekly_allus_2010_2025 <- storm_measures_centroid_raw %>
   ) %>%
   arrange(year, week, GEOID)
 
-saveRDS(storm_measures_centroid_weekly_allus_2010_2025, "Output/ibtracs_output/storm_measures_centroid_weekly_allus_2010_2025.rds")
+saveRDS(storm_measures_centroid_weekly_allus_2010_2025, "Data/ibtracs_files/panels/storm_measures_centroid_weekly_allus_2010_2025.rds")
 
 
 
-storm_measures_whole_county_raw <- readRDS("Output/ibtracs_output/storm_measures_whole_county.rds")
+storm_measures_whole_county_raw <- readRDS("Data/ibtracs_files/panels/storm_measures_whole_county.rds")
 
 storm_measures_whole_county_weekly_allus_2010_2025 <- storm_measures_whole_county_raw %>%
   mutate(
@@ -220,9 +220,9 @@ storm_measures_whole_county_weekly_allus_2010_2025 <- storm_measures_whole_count
   ) %>%
   arrange(year, week, GEOID)
 
-saveRDS(storm_measures_whole_county_weekly_allus_2010_2025, "Output/ibtracs_output/storm_measures_whole_county_weekly_allus_2010_2025.rds")
+saveRDS(storm_measures_whole_county_weekly_allus_2010_2025, "Data/ibtracs_files/panels/storm_measures_whole_county_weekly_allus_2010_2025.rds")
 
-storm_measures_whole_county_weekly_allus_2010_2025 <- readRDS("Output/ibtracs_output/storm_measures_whole_county_weekly_allus_2010_2025.rds")
+storm_measures_whole_county_weekly_allus_2010_2025 <- readRDS("Data/ibtracs_files/panels/storm_measures_whole_county_weekly_allus_2010_2025.rds")
 
 #### Delete this later ####
 
@@ -372,4 +372,4 @@ out_panel <- out_panel_raw %>%
   st_as_sf() %>%
   arrange(year, week, GEOID)
 
-saveRDS(out_panel, "Output/out_panel.rds")
+saveRDS(out_panel, "Data/out_panel.rds")
