@@ -287,6 +287,84 @@ extract_era5_nc_files <- function(
   do.call(rbind, outputs)
 }
 
+.era5_processing_period_dates <- function(validity_times) {
+  # ERA5 accumulation and min/max fields are valid for the period ending at
+  # the timestamp, so the 00 UTC value belongs to the previous UTC day.
+  as.Date(validity_times - 1, tz = "UTC")
+}
+
+.era5_weighted_mean <- function(values, weights) {
+  keep <- !is.na(values) & !is.na(weights) & weights > 0
+  if (!any(keep)) {
+    return(NA_real_)
+  }
+
+  sum(values[keep] * weights[keep]) / sum(weights[keep])
+}
+
+.combine_era5_daily_fragments <- function(
+  daily_data,
+  id_cols,
+  sum_cols = character(),
+  max_cols = character(),
+  mean_cols = character()
+) {
+  if (nrow(daily_data) == 0) {
+    return(daily_data)
+  }
+
+  group_cols <- c(intersect(id_cols, names(daily_data)), "date")
+  group_keys <- do.call(
+    paste,
+    c(lapply(daily_data[, group_cols, drop = FALSE], as.character), sep = "\r")
+  )
+  if (!any(duplicated(group_keys))) {
+    return(daily_data)
+  }
+
+  sum_cols <- intersect(sum_cols, names(daily_data))
+  max_cols <- intersect(max_cols, names(daily_data))
+  mean_cols <- intersect(mean_cols, names(daily_data))
+
+  combined_parts <- lapply(split(seq_len(nrow(daily_data)), group_keys), function(rows) {
+    rows_data <- daily_data[rows, , drop = FALSE]
+    out <- rows_data[1, , drop = FALSE]
+    total_hours <- sum(rows_data$n_hours, na.rm = TRUE)
+    out$n_hours <- total_hours
+
+    for (col in sum_cols) {
+      values <- rows_data[[col]]
+      out[[col]] <- if (total_hours == 0 || all(is.na(values))) {
+        NA_real_
+      } else {
+        sum(values, na.rm = TRUE)
+      }
+    }
+
+    for (col in max_cols) {
+      values <- rows_data[[col]]
+      out[[col]] <- if (all(is.na(values))) {
+        NA_real_
+      } else {
+        max(values, na.rm = TRUE)
+      }
+    }
+
+    for (col in mean_cols) {
+      out[[col]] <- .era5_weighted_mean(rows_data[[col]], rows_data$n_hours)
+    }
+
+    out$year <- as.integer(format(out$date, "%Y"))
+    out$month <- as.integer(format(out$date, "%m"))
+    out$day <- as.integer(format(out$date, "%d"))
+    out
+  })
+
+  combined <- do.call(rbind, combined_parts)
+  rownames(combined) <- NULL
+  combined
+}
+
 summarise_era5_daily_precip <- function(
   extracted_files,
   start_date = NULL,
@@ -363,7 +441,7 @@ summarise_era5_daily_precip <- function(
       by = "hour",
       length.out = length(precip_cols)
     )
-    hourly_dates <- as.Date(hourly_times)
+    hourly_dates <- .era5_processing_period_dates(hourly_times)
     dates <- sort(unique(hourly_dates))
 
     id_cols_present <- intersect(id_cols, names(data))
@@ -430,6 +508,14 @@ summarise_era5_daily_precip <- function(
     )
   }
 
+  daily_precip <- .combine_era5_daily_fragments(
+    daily_data = daily_precip,
+    id_cols = id_cols,
+    sum_cols = grep("^precip_total_", names(daily_precip), value = TRUE),
+    max_cols = grep("^precip_max_hourly_", names(daily_precip), value = TRUE),
+    mean_cols = grep("^precip_mean_hourly_", names(daily_precip), value = TRUE)
+  )
+
   if ("GEOID" %in% names(daily_precip)) {
     daily_precip <- daily_precip[order(daily_precip$GEOID, daily_precip$date), ]
   } else {
@@ -448,4 +534,166 @@ summarise_era5_daily_precip <- function(
   }
 
   daily_precip
+}
+
+summarise_era5_daily_windgust <- function(
+  extracted_files,
+  start_date = NULL,
+  output_file = NULL,
+  id_cols = c("GEOID", "NAME"),
+  windgust_prefix = "fg10",
+  unit_suffix = "mps"
+) {
+  # Accept the extraction manifest directly, or a vector of extracted RDS files.
+  if (is.data.frame(extracted_files) && "rds_file" %in% names(extracted_files)) {
+    extracted_files <- extracted_files$rds_file
+  }
+
+  # A single already-loaded data frame is also allowed, but then we need a date.
+  input_is_data <- is.data.frame(extracted_files)
+  if (input_is_data && is.null(start_date)) {
+    stop("Please provide `start_date` when `extracted_files` is already a data frame.")
+  }
+
+  if (!input_is_data) {
+    extracted_files <- stats::na.omit(extracted_files)
+  }
+
+  start_dates <- NULL
+  if (!is.null(start_date)) {
+    start_dates <- as.Date(start_date)
+    if (any(is.na(start_dates))) {
+      stop("`start_date` must be coercible to Date.")
+    }
+    if (!input_is_data && !(length(start_dates) %in% c(1, length(extracted_files)))) {
+      stop("For multiple files, provide either one `start_date` or one per file.")
+    }
+  }
+
+  infer_start_date <- function(file_path) {
+    # Files produced by download_era5_files() contain YYYY_MM in their name.
+    file_month <- regmatches(
+      basename(file_path),
+      regexpr("[0-9]{4}_[0-9]{2}", basename(file_path))
+    )
+
+    if (length(file_month) == 0 || file_month == "") {
+      stop("Could not infer the month from file name: ", file_path)
+    }
+
+    as.Date(paste0(gsub("_", "-", file_month), "-01"))
+  }
+
+  summarise_one_file <- function(data, file_path = NULL, file_start_date = NULL) {
+    windgust_cols <- grep(paste0("^", windgust_prefix, "_"), names(data), value = TRUE)
+    if (length(windgust_cols) == 0) {
+      stop("No wind gust columns starting with `", windgust_prefix, "_` were found.")
+    }
+
+    # Keep fg10_1, fg10_2, ..., fg10_24 in numeric order if that naming scheme is used.
+    hour_index <- suppressWarnings(as.integer(sub(paste0("^", windgust_prefix, "_"), "", windgust_cols)))
+    if (!all(is.na(hour_index))) {
+      windgust_cols <- windgust_cols[order(hour_index)]
+    }
+
+    if (is.null(file_start_date)) {
+      file_start_date <- infer_start_date(file_path)
+    }
+
+    windgust_values <- as.matrix(data[, windgust_cols, drop = FALSE])
+
+    hourly_times <- seq.POSIXt(
+      from = as.POSIXct(file_start_date, tz = "UTC"),
+      by = "hour",
+      length.out = length(windgust_cols)
+    )
+    hourly_dates <- .era5_processing_period_dates(hourly_times)
+    dates <- sort(unique(hourly_dates))
+
+    id_cols_present <- intersect(id_cols, names(data))
+    ids <- data[, id_cols_present, drop = FALSE]
+
+    daily_parts <- vector("list", length(dates))
+
+    for (i in seq_along(dates)) {
+      day_cols <- hourly_dates == dates[[i]]
+      day_values <- windgust_values[, day_cols, drop = FALSE]
+      valid_hours <- rowSums(!is.na(day_values))
+
+      daily_mean <- rowMeans(day_values, na.rm = TRUE)
+      daily_max <- apply(day_values, 1, function(x) {
+        if (all(is.na(x))) NA_real_ else max(x, na.rm = TRUE)
+      })
+
+      # If a county has no valid hourly values that day, keep all summaries NA.
+      daily_max[valid_hours == 0] <- NA_real_
+      daily_mean[valid_hours == 0] <- NA_real_
+
+      daily_parts[[i]] <- data.frame(
+        ids,
+        date = dates[[i]],
+        year = as.integer(format(dates[[i]], "%Y")),
+        month = as.integer(format(dates[[i]], "%m")),
+        day = as.integer(format(dates[[i]], "%d")),
+        n_hours = valid_hours,
+        stringsAsFactors = FALSE
+      )
+      daily_parts[[i]][[paste0("windgust_max_hourly_", unit_suffix)]] <- daily_max
+      daily_parts[[i]][[paste0("windgust_mean_hourly_", unit_suffix)]] <- daily_mean
+    }
+
+    do.call(rbind, daily_parts)
+  }
+
+  if (input_is_data) {
+    daily_windgust <- summarise_one_file(
+      data = extracted_files,
+      file_start_date = start_dates[[1]]
+    )
+  } else {
+    daily_windgust <- do.call(
+      rbind,
+      lapply(seq_along(extracted_files), function(i) {
+        file_start_date <- if (is.null(start_dates)) {
+          NULL
+        } else if (length(start_dates) == 1) {
+          start_dates[[1]]
+        } else {
+          start_dates[[i]]
+        }
+
+        summarise_one_file(
+          data = readRDS(extracted_files[[i]]),
+          file_path = extracted_files[[i]],
+          file_start_date = file_start_date
+        )
+      })
+    )
+  }
+
+  daily_windgust <- .combine_era5_daily_fragments(
+    daily_data = daily_windgust,
+    id_cols = id_cols,
+    max_cols = grep("^windgust_max_hourly_", names(daily_windgust), value = TRUE),
+    mean_cols = grep("^windgust_mean_hourly_", names(daily_windgust), value = TRUE)
+  )
+
+  if ("GEOID" %in% names(daily_windgust)) {
+    daily_windgust <- daily_windgust[order(daily_windgust$GEOID, daily_windgust$date), ]
+  } else {
+    daily_windgust <- daily_windgust[order(daily_windgust$date), ]
+  }
+  rownames(daily_windgust) <- NULL
+
+  # Optionally save the final county-day panel for reuse.
+  if (!is.null(output_file)) {
+    dir.create(dirname(output_file), recursive = TRUE, showWarnings = FALSE)
+    if (tolower(tools::file_ext(output_file)) == "csv") {
+      utils::write.csv(daily_windgust, output_file, row.names = FALSE)
+    } else {
+      saveRDS(daily_windgust, output_file)
+    }
+  }
+
+  daily_windgust
 }

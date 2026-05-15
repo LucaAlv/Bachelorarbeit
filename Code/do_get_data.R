@@ -43,6 +43,7 @@ states_list <- c(
 states_names_list <- c(
   "Florida", "Texas", "South Carolina", "North Carolina", "Louisiana", "Puerto Rico"
   )
+state_file_prefixes <- c("fl", "tx", "sc", "nc", "la", "pr")
 
 # Use the tigris package to pull USCensus county shapefiles
 
@@ -88,9 +89,11 @@ dir.create("Output", recursive = TRUE, showWarnings = FALSE)
 # Data subfolders
 dir.create("Data/bm_files", recursive = TRUE, showWarnings = FALSE)
 dir.create("Data/ibtracs_files", recursive = TRUE, showWarnings = FALSE)
+dir.create("Data/ibtracs_files/panels", recursive = TRUE, showWarnings = FALSE)
+dir.create("Data/ibtracs_files/raw", recursive = TRUE, showWarnings = FALSE)
 dir.create("Data/era5_files", recursive = TRUE, showWarnings = FALSE)
 dir.create("Data/pep_files", recursive = TRUE, showWarnings = FALSE)
-dir.create("Data/bm_files/weekly_panels", recursive = TRUE, showWarnings = FALSE)
+dir.create("Data/bm_files/period_panels", recursive = TRUE, showWarnings = FALSE)
 # Output subfolders
 dir.create("Output/era5_output", recursive = TRUE, showWarnings = FALSE)
 dir.create("Output/ntl_output", recursive = TRUE, showWarnings = FALSE)
@@ -107,8 +110,13 @@ dir.create("Output/ibtracs_output", recursive = TRUE, showWarnings = FALSE)
 source("Code/get_blackmarble_data.R")
 source("Code/get_ibtracs_data.R")
 source("Code/get_era5_data.R")
-source("Code/get_census_data.R")
-source("Code/get_movement_data.R")
+
+
+
+
+
+
+
 
 
 
@@ -116,20 +124,80 @@ source("Code/get_movement_data.R")
 
 #### Define output panel ####
 
+panel_years <- 2016:2018
+panel_start_date <- as.Date(paste0(min(panel_years), "-01-01"))
+panel_end_date <- as.Date(paste0(max(panel_years), "-12-31"))
+period_days <- 7L
+
+# Weekly time intervals are weird because number of days usually doesn't perfectly divide by number of weeks
+# This function solves this by creating periods (that are very similar to weeks) but flow across years
+# Resulting in only one period (the last one) that may not have exactly seven days
+
+dates <- seq.Date(
+  from = panel_start_date,
+  to = panel_end_date,
+  by = "day"
+)
+
+time_calendar <- tibble(date = dates) %>%
+  mutate(
+    period_index = as.integer(date - panel_start_date) %/% period_days,
+    period_id = period_index + 1L,
+    period_start = panel_start_date + period_days * period_index,
+    period_end = period_start + period_days - 1L,
+    year = year(period_start)
+  ) %>%
+  select(-period_index)
+
+time_periods <- time_calendar %>%
+  count(
+    period_id,
+    period_start,
+    period_end,
+    year,
+    name = "period_days_in_sample"
+  ) %>%
+  mutate(
+    period_label = paste(period_start, period_end, sep = "_"),
+    interval_days = period_days
+  ) %>%
+  arrange(period_id)
+
+time_join_keys <- c("GEOID", "period_id", "period_start", "period_end", "year")
+
+add_period_vars <- function(data) {
+  data %>%
+    mutate(date = as.Date(date)) %>%
+    filter(date >= panel_start_date, date <= panel_end_date) %>%
+    select(-any_of(c("period_id", "period_start", "period_end", "year"))) %>%
+    left_join(time_calendar, by = "date")
+}
+
+# Function to prevent having to write too many readRDS statements
+read_panel_rds_files <- function(file_grid, label) {
+  missing_files <- file_grid$file[!file.exists(file_grid$file)]
+
+  if (length(missing_files) > 0) {
+    stop(
+      "Missing ",
+      label,
+      " file(s):\n",
+      paste(missing_files, collapse = "\n"),
+      call. = FALSE
+    )
+  }
+
+  file_grid %>%
+    mutate(data = map(file, readRDS)) %>%
+    pull(data) %>%
+    bind_rows()
+}
+
 # Create panel dataframe that we will join to later
-out_panel_raw <- county_polygons_pr %>%
+out_panel_raw <- county_polygons_all %>%
   # drop geometry to make joining easier and faster
   st_drop_geometry() %>%
-  crossing(
-    year = seq(
-      from = 2016,
-      to = 2018
-    ),
-    week = seq(
-      from = 1,
-      to = 53
-    )
-  )
+  crossing(time_periods)
 
 
 
@@ -139,112 +207,142 @@ out_panel_raw <- county_polygons_pr %>%
 
 
 
-#### Get wind data ####
+
+
+
+
+
+
+
+
+#### Get storm wind data ####
 
 ## Extract storm data 
 
-if (!file.exists("Data/ibtracs_files/panels/storm_measures_centroid.rds") | !file.exists("Data/ibtracs_files/panels/storm_measures_whole_county.rds"))  {
+storm_measures_centroid_twfe_file <- "Data/ibtracs_files/panels/storm_measures_centroid_twfe.rds"
+storm_measures_centroid_event_file <- "Data/ibtracs_files/panels/storm_measures_centroid_event.rds"
+
+storm_measures_whole_county_twfe_file <- "Data/ibtracs_files/panels/storm_measures_whole_county_twfe.rds"
+storm_measures_whole_county_event_file <- "Data/ibtracs_files/panels/storm_measures_whole_county_event_file.rds"
+
+if (
+  !file.exists(storm_measures_centroid_twfe_file) |
+  !file.exists(storm_measures_centroid_event_file) |
+  !file.exists(storm_measures_whole_county_twfe_file) |
+  !file.exists(storm_measures_whole_county_event_file)
+)  {
   source("Code/do_get_ibtracs_data.R")
 }
 
-## Load data and create yearly panels
+# Small helper function to concatenate the storm names when aggregating to 7 day intervals
+collapse_period_storm_names <- function(x) {
+  x <- x[!is.na(x) & nzchar(x)]
 
-if (!file.exists("Data/ibtracs_files/panels/storm_measures_centroid_weekly_allus_2010_2025.rds")) {
+  # If there is no storm in this period
+  if (length(x) == 0) {
+    return(NA_character_)
+  }
 
-  storm_measures_centroid_raw <- readRDS("Data/ibtracs_files/panels/storm_measures_centroid.rds")
+  storm_names <- stringr::str_split(x, pattern = ";\\s*", simplify = FALSE) %>%
+    unlist(use.names = FALSE) %>%
+    trimws()
 
-  storm_measures_centroid_weekly_allus_2010_2025 <- storm_measures_centroid_raw %>%
-    mutate(
-      year = year(date),
-      week_start = floor_date(date, unit = "week", week_start = 1),
-      week_end = ceiling_date(date, unit = "week", week_start = 1),
-      week = week(date)
-    ) %>%
-    # Add days since storm variable
-    group_by(GEOID) %>%
-    arrange(date, .by_group = TRUE) %>%
-    mutate(
-      days_since_last_storm = {
-        storm_day <- !is.na(tc_day) & tc_day == 1
-        last_storm_day <- cummax(if_else(storm_day, as.numeric(date), -Inf))
-        days_since <- as.numeric(date) - last_storm_day
-        days_since[!is.finite(last_storm_day)] <- NA_real_
-        as.integer(days_since)
-      }
-    ) %>%
-    ungroup() %>%
-    group_by(GEOID, year, week) %>%
-    summarize(
-      n_days = n(),
-      max_wind = max(tc_max_wind, na.rm = TRUE),
-      day_count = sum(tc_day, na.rm = TRUE),
-      weeks_since_last_storm = {
-        days_at_week_end <- dplyr::last(days_since_last_storm, order_by = date)
-        if (is.na(days_at_week_end)) NA_integer_ else as.integer(floor(days_at_week_end / 7))
-      },
-      .groups = "drop"
-    ) %>%
-    arrange(year, week, GEOID)
+  storm_names <- sort(unique(storm_names[nzchar(storm_names)]))
 
-  saveRDS(storm_measures_centroid_weekly_allus_2010_2025, "Data/ibtracs_files/panels/storm_measures_centroid_weekly_allus_2010_2025.rds")
-
-} else {
-  storm_measures_centroid_weekly_allus_2010_2025 <- readRDS("Data/ibtracs_files/panels/storm_measures_centroid_weekly_allus_2010_2025.rds")
+  if (length(storm_names) == 0) NA_character_ else paste(storm_names, collapse = "; ")
 }
 
-if (file.exists("Data/ibtracs_files/panels/storm_measures_whole_county_weekly_allus_2010_2025.rds")) {
+## Load data and create 7-day period panels
 
-  storm_measures_whole_county_raw <- readRDS("Data/ibtracs_files/panels/storm_measures_whole_county.rds")
+storm_measures_centroid_period_file <- file.path(
+  "Data/ibtracs_files/panels",
+  paste0(
+    "storm_measures_centroid_",
+    period_days,
+    "day_allus_",
+    min(panel_years),
+    "_",
+    max(panel_years),
+    ".rds"
+  )
+)
 
-  storm_measures_whole_county_weekly_allus_2010_2025 <- storm_measures_whole_county_raw %>%
-    mutate(
-      year = year(date),
-      week_start = floor_date(date, unit = "week", week_start = 1),
-      week_end = ceiling_date(date, unit = "week", week_start = 1),
-      week = week(date)
-    ) %>%
-    # Add days since storm variable
-    group_by(GEOID) %>%
-    arrange(date, .by_group = TRUE) %>%
-    mutate(
-      days_since_last_storm = {
-        storm_day <- !is.na(tc_poly_day) & tc_poly_day == 1
-        last_storm_day <- cummax(if_else(storm_day, as.numeric(date), -Inf))
-        days_since <- as.numeric(date) - last_storm_day
-        days_since[!is.finite(last_storm_day)] <- NA_real_
-        as.integer(days_since)
-      }
-    ) %>%
-    ungroup() %>%
-    group_by(GEOID, year, week) %>%
+storm_measures_whole_county_period_file <- file.path(
+  "Data/ibtracs_files/panels",
+  paste0(
+    "storm_measures_whole_county_",
+    period_days,
+    "day_allus_",
+    min(panel_years),
+    "_",
+    max(panel_years),
+    ".rds"
+  )
+)
+
+if (!exists(storm_measures_centroid_period_file)) {
+
+  storm_measures_centroid_raw <- readRDS(storm_measures_centroid_file)
+
+  storm_measures_centroid_period <- storm_measures_centroid_raw %>%
+    add_period_vars() %>%
+    group_by(GEOID, period_id, period_start, period_end, year) %>%
     summarize(
-      n_days = n(),
-      max_wind = max(tc_poly_max_wind, na.rm = TRUE),
-      mean_wind = {
+      n_days_cent = n(),
+      storm_names_cent = collapse_period_storm_names(storm_name),
+      # max max wind at centroid
+      max_max_wind_cent = max(tc_max_wind, na.rm = TRUE),
+      # mean max wind at centroid (i.e. we have a centroid max for every day of the period - this is the mean of these)
+      mean_max_wind_cent = mean(tc_max_wind, na.rm = TRUE),
+      day_count_cent = sum(tc_day, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    arrange(period_id, GEOID)
+
+  saveRDS(storm_measures_centroid_period, storm_measures_centroid_period_file)
+
+} else {
+  storm_measures_centroid_period <- readRDS(storm_measures_centroid_period_file)
+}
+
+if (!exists(storm_measures_whole_county_period_file)) {
+
+  storm_measures_whole_county_raw <- readRDS(storm_measures_whole_county_file)
+
+  storm_measures_whole_county_period <- storm_measures_whole_county_raw %>%
+    add_period_vars() %>%
+    group_by(GEOID, period_id, period_start, period_end, year) %>%
+    summarize(
+      n_days_poly = n(),
+      # max max wind over whole county (i.e. each county had one point with maximum wind exposure each day - this doesn't have to be the centroid) of these we take the period max
+      storm_names_poly = collapse_period_storm_names(storm_name),
+      max_max_wind_poly = max(tc_poly_max_wind, na.rm = TRUE),
+      # mean max wind
+      mean_max_wind_poly = mean(tc_poly_max_wind, na.rm = TRUE),
+      # max mean wind
+      max_mean_wind_poly = max(tc_poly_mean_wind, na.rm = TRUE),
+      # mean mean wind over whole county (i.e. we have the mean wind speed over the whole county for every day - from these we take the mean)
+      # the problem here with taking the mean is, that on days where tc_poly_mean_wind is 0 the wind speed doesn't actually have to be 0
+      # for these days there is just no official storm recording so stormR didn't create any values for this
+      # I manually filled these days up with zeroes
+      # just taking the mean here thus would make the strong assumption that there was no wind outside of the storms
+      mean_mean_wind_poly = {
         storm_days <- !is.na(tc_poly_day) & tc_poly_day == 1
         if (any(storm_days)) mean(tc_poly_mean_wind[storm_days], na.rm = TRUE) else 0
       },
-      day_count = sum(tc_poly_day, na.rm = TRUE),
-      weeks_since_last_storm = {
-        days_at_week_end <- dplyr::last(days_since_last_storm, order_by = date)
-        if (is.na(days_at_week_end)) NA_integer_ else as.integer(floor(days_at_week_end / 7))
-      },
+      day_count_poly = sum(tc_poly_day, na.rm = TRUE),
       .groups = "drop"
     ) %>%
-    arrange(year, week, GEOID)
+    arrange(period_id, GEOID)
 
-  saveRDS(storm_measures_whole_county_weekly_allus_2010_2025, "Data/ibtracs_files/panels/storm_measures_whole_county_weekly_allus_2010_2025.rds")
+  saveRDS(storm_measures_whole_county_period, storm_measures_whole_county_period_file)
 
 } else {
-  storm_measures_whole_county_weekly_allus_2010_2025 <- readRDS("Data/ibtracs_files/panels/storm_measures_whole_county_weekly_allus_2010_2025.rds")
+  storm_measures_whole_county_period <- readRDS(storm_measures_whole_county_period_file)
 }
 
-
-#### Delete this later ####
-
-storm_panel <- storm_measures_whole_county_weekly_allus_2010_2025 %>%
-  filter(startsWith(GEOID, "72")) %>%
-  filter(year == 2016 | year == 2017 | year == 2018)
+storm_panel <- storm_measures_whole_county_period %>%
+  left_join(storm_measures_centroid_period, by = time_join_keys)
 
 
 
@@ -266,46 +364,42 @@ source("Code/do_get_ntl_data.R")
 
 ## Read in previously processed data
 
-# Puerto Rico
-ntl_panel_pr_2016_raw <- readRDS("Data/bm_files/tract_day/pr_gapfilled_2016/bm_panel.rds")
-ntl_panel_pr_2017_raw <- readRDS("Data/bm_files/tract_day/pr_gapfilled_2017/bm_panel.rds")
-ntl_panel_pr_2018_raw <- readRDS("Data/bm_files/tract_day/pr_gapfilled_2018/bm_panel.rds")
-
-# Florida
-ntl_panel_fl_2016_raw <- readRDS("Data/bm_files/tract_day/fl_gapfilled_2016/bm_panel.rds")
-ntl_panel_fl_2017_raw <- readRDS("Data/bm_files/tract_day/fl_gapfilled_2017/bm_panel.rds")
-
+ntl_panel_files <- crossing(
+  state = state_file_prefixes,
+  year = panel_years
+) %>%
+  mutate(
+    file = file.path(
+      "Data/bm_files/tract_day",
+      paste0(state, "_gapfilled_", year),
+      "bm_panel.rds"
+    )
+  )
 
 
 ## Turn raw data into nice panels and combine into larger dataframe
 
-make_ntl_panel_weekly <- function(raw_data) {
+make_ntl_panel_period <- function(raw_data) {
 
   out <- raw_data %>%
-    mutate(
-      year = year(date),
-      week_start = floor_date(date, unit = "week", week_start = 1),
-      week_end = ceiling_date(date, unit = "week", week_start = 1),
-      week = week(date)
-    ) %>%
-    group_by(GEOID, year, week) %>%
+    add_period_vars() %>%
+    group_by(GEOID, period_id, period_start, period_end, year) %>%
     summarise(
+      ntl_days_in_period = n(),
+      ntl_valid_days = sum(!is.na(ntl_mean)),
       ntl_mean = if (all(is.na(ntl_mean))) NA_real_ else mean(ntl_mean, na.rm = TRUE),
       valid_pixel_share_mean = if (all(is.na(valid_pixel_share))) NA_real_ else mean(valid_pixel_share, na.rm = TRUE),
       .groups = "drop"
-    ) 
+    ) %>%
+    arrange(period_id, GEOID)
 
   return(out)
 }
 
-ntl_panel <- rbind(
-  make_ntl_panel_weekly(ntl_panel_pr_2016_raw),
-  make_ntl_panel_weekly(ntl_panel_pr_2017_raw),
-  make_ntl_panel_weekly(ntl_panel_pr_2018_raw)
-)
+ntl_panel_raw <- read_panel_rds_files(ntl_panel_files, "Black Marble")
+ntl_panel <- make_ntl_panel_period(ntl_panel_raw)
 
 
-saveRDS(ntl_panel, "Data/bm_files/weekly_panels/ntl_panel")
 
 
 
@@ -340,50 +434,102 @@ source("Code/do_get_era5_data.R")
 
 ## Read in previously processed data 
 
-era5_pr_2016_tp_panel <- readRDS("Data/era5_files/panels/era5_pr_2016_tp_panel.rds")
-era5_pr_2017_tp_panel <- readRDS("Data/era5_files/panels/era5_pr_2017_tp_panel.rds")
-era5_pr_2018_tp_panel <- readRDS("Data/era5_files/panels/era5_pr_2018_tp_panel.rds")
+era5_tp_files <- crossing(
+  state = state_file_prefixes,
+  year = panel_years
+) %>%
+  mutate(
+    file = file.path(
+      "Data/era5_files/panels",
+      paste0("era5_", state, "_", year, "_tp_panel.rds")
+    )
+  )
+
+era5_wg_files <- crossing(
+  state = state_file_prefixes,
+  year = panel_years
+) %>%
+  mutate(
+    file = file.path(
+      "Data/era5_files/panels",
+      paste0("era5_", state, "_", year, "_wg_panel.rds")
+    )
+  )
 
 ## Combine into larger data frame
 
-make_era5_panel_weekly <- function(raw_data) {
+make_era5_tp_panel_period <- function(raw_data) {
 
   out <- raw_data %>%
-    mutate(
-      week_start = floor_date(date, unit = "week", week_start = 1),
-      week_end = ceiling_date(date, unit = "week", week_start = 1),
-      week = week(date)
-    ) %>%
-    group_by(GEOID, year, week) %>%
+    add_period_vars() %>%
+    group_by(GEOID, period_id, period_start, period_end, year) %>%
     summarise(
-      ndays = n(),
-      n_hours = sum(n_hours),
+      era5_tp_days_in_period = n(),
+      era5_tp_hours = sum(n_hours, na.rm = TRUE),
       precip_total_mm = sum(precip_total_mm, na.rm = TRUE),
       precip_max_hourly_mm = max(precip_max_hourly_mm, na.rm = TRUE),
       precip_mean_hourly_mm = mean(precip_mean_hourly_mm, na.rm = TRUE),
       .groups = "drop"
-    ) 
+    ) %>%
+    arrange(period_id, GEOID)
 
   return(out)
 }
 
-era5_panel <- rbind(
-  make_era5_panel_weekly(era5_pr_2016_tp_panel),
-  make_era5_panel_weekly(era5_pr_2017_tp_panel),
-  make_era5_panel_weekly(era5_pr_2018_tp_panel)
-)
+make_era5_wg_panel_period <- function(raw_data) {
+
+  out <- raw_data %>%
+    add_period_vars() %>%
+    group_by(GEOID, period_id, period_start, period_end, year) %>%
+    summarise(
+      era5_wg_days_in_period = n(),
+      era5_wg_hours = sum(n_hours, na.rm = TRUE),
+      max_windgust_max_mps = max(windgust_max_hourly_mps, na.rm = TRUE),
+      mean_windgust_max_mps = mean(windgust_max_hourly_mps, na.rm = TRUE),
+      max_windgust_mean_mps = max(windgust_mean_hourly_mps, na.rm = TRUE),
+      mean_windgust_mean_mps = mean(windgust_mean_hourly_mps, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    arrange(period_id, GEOID)
+
+  return(out)
+}
+
+era5_panel_tp_raw <- read_panel_rds_files(era5_tp_files, "ERA5 precipitation")
+era5_panel_tp <- make_era5_tp_panel_period(era5_panel_tp_raw)
+
+era5_panel_wg_raw <- read_panel_rds_files(era5_wg_files, "ERA5 wind gust")
+era5_panel_wg <- make_era5_wg_panel_period(era5_panel_wg_raw)
+
+era5_panel <- left_join(era5_panel_tp, era5_panel_wg, by = time_join_keys)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ## Output panel
 
 out_panel <- out_panel_raw %>%
-  left_join(storm_panel, by = c("GEOID", "year", "week")) %>%
-  left_join(ntl_panel, by = c("GEOID", "year", "week")) %>%
-  left_join(era5_panel, by = c("GEOID", "year", "week")) %>%
+  left_join(storm_panel, by = time_join_keys) %>%
+  left_join(ntl_panel, by = time_join_keys) %>%
+  left_join(era5_panel, by = time_join_keys) %>%
   left_join(
-    county_polygons_pr %>% dplyr::select(GEOID, geometry),
+    county_polygons_all %>% dplyr::select(GEOID, geometry),
     by = "GEOID"
   ) %>%
   st_as_sf() %>%
-  arrange(year, week, GEOID)
+  arrange(period_id, GEOID)
 
 saveRDS(out_panel, "Data/out_panel.rds")

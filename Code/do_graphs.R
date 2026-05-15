@@ -1,3 +1,9 @@
+library(tidyverse)
+library(sf)
+
+out_panel <- readRDS("Data/out_panel.rds")
+out_panel_fl <- readRDS("Data/out_panel_fl.rds")
+
 make_weekly_geo_grid <- function(
   data,
   fill_var,
@@ -12,7 +18,7 @@ make_weekly_geo_grid <- function(
   na_value = "grey90",
   border_color = "white",
   border_linewidth = 0.2,
-  width = 14,
+  width = 20,
   height = 18,
   dpi = 300
 ) {
@@ -22,13 +28,29 @@ make_weekly_geo_grid <- function(
   fill_name <- rlang::as_string(fill_var)
   facet_name <- rlang::as_string(facet_var)
 
-  missing_vars <- setdiff(c(fill_name, facet_name), names(data))
+  missing_vars <- base::setdiff(c(fill_name, facet_name), names(data))
   if (length(missing_vars) > 0) {
     stop(
       "The following variables are missing from `data`: ",
       paste(missing_vars, collapse = ", "),
       call. = FALSE
     )
+  }
+
+  if (!inherits(data, "sf")) {
+    stop("`data` must be an `sf` object.", call. = FALSE)
+  }
+
+  empty_geometry <- sf::st_is_empty(data)
+  if (all(empty_geometry)) {
+    stop(
+      "`data` only contains empty geometries. Rebuild the panel with the correct county polygons before plotting.",
+      call. = FALSE
+    )
+  }
+
+  if (any(empty_geometry)) {
+    data <- dplyr::filter(data, !empty_geometry)
   }
 
   fill_limits <- range(data[[fill_name]], na.rm = TRUE)
@@ -54,7 +76,7 @@ make_weekly_geo_grid <- function(
       subtitle = subtitle,
       caption = caption
     ) +
-    ggplot2::coord_sf(datum = NA) +
+    ggplot2::coord_sf(datum = NA, lims_method = "geometry_bbox") +
     ggplot2::theme_void() +
     ggplot2::theme(
       strip.text = ggplot2::element_text(face = "bold", size = 8),
@@ -77,6 +99,24 @@ make_weekly_geo_grid <- function(
 
   return(plot)
 }
+
+wind_weekly_2017_grid <- make_weekly_geo_grid(
+  data = filter(out_panel, year == 2017),
+  fill_var = max_max_wind_poly,
+  legend_name = "Weekly max\nwind",
+  title = "U.S. weekly max wind exposure in 2017",
+  subtitle = "County-level weekly max wind speeds",
+  output_filename = "Output/ibtracs_output/wind_weekly_2017_grid.png"
+)
+
+ntl_weekly_2017_grid <- make_weekly_geo_grid(
+  data = filter(out_panel, year == 2017),
+  fill_var = ntl_mean,
+  legend_name = "Weekly mean\nNTL",
+  title = "U.S. weekly night lights in 2017",
+  subtitle = "County-level weekly mean of Gap-Filled DNB BRDF-Corrected NTL",
+  output_filename = "Output/ntl_output/ntl_weekly_2017_grid.png"
+)
 
 
 ## Mean wind - Puerto Rico - Weekly - 2017 - Gridplot
@@ -137,4 +177,27 @@ prec_pr_weekly_2018_grid <- make_weekly_geo_grid(
   title = "Puerto Rico weekly total precipitation in 2018",
   subtitle = "County-level weekly total precipitation",
   output_filename = "Output/ibtracs_output/prec_pr_weekly_2018_grid.png"
+)
+
+
+#### Florida
+
+## Mean wind - Florida - Weekly - 2017 - Gridplot
+mean_wind_pr_weekly_2017_grid <- make_weekly_geo_grid(
+  data = filter(out_panel_fl, year == 2017),
+  fill_var = mean_wind,
+  legend_name = "Weekly mean\nwind",
+  title = "Florida weekly mean wind exposure in 2017",
+  subtitle = "County-level weekly mean wind speeds",
+  output_filename = "Output/ibtracs_output/mean_wind_fl_weekly_2017_grid.png"
+)
+
+## NTL - Florida - Weekly - 2017 - Gridplot
+ntl_pr_weekly_2017_grid <- make_weekly_geo_grid(
+  data = filter(out_panel_fl, year == 2017),
+  fill_var = ntl_mean,
+  legend_name = "Weekly mean\nNTL",
+  title = "Florida weekly night lights in 2017",
+  subtitle = "County-level weekly mean of Gap-Filled DNB BRDF-Corrected NTL",
+  output_filename = "Output/ntl_output/ntl_fl_weekly_2017_grid.png"
 )

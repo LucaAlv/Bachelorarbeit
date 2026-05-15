@@ -16,6 +16,7 @@ input_basin <- "NA"
 
 ## Make a list of all storms in relevant area and specified time frame
 get_seasons <- c(2010, 2025)
+get_seasons <- c(2010, 2010)
 
 storm_data_set <- defStormsDataset(
   filename = ibtracs_dest_file,
@@ -37,36 +38,88 @@ loi_all <- county_polygons_all %>%
 storms_list <- defStormsList(sds = storm_data_set, loi = loi_all) %>%
   renameStorms()
 
+# Note: it is important that empirical RMW = TRUE
+# Without this there is a weird "bug" that for weak storms with huge ibtracs rmw stormr's
+# willoughby inner-core exponent can become negative
+# this leads to the formula exploding near the storm center
+
+storm_measures_centroid_twfe_file <- "Data/ibtracs_files/panels/storm_measures_centroid_twfe.rds"
+storm_measures_centroid_event_file <- "Data/ibtracs_files/panels/storm_measures_centroid_event.rds"
+
+storm_measures_whole_county_twfe_file <- "Data/ibtracs_files/panels/storm_measures_whole_county_twfe.rds"
+storm_measures_whole_county_event_file <- "Data/ibtracs_files/panels/storm_measures_whole_county_event_file.rds"
+
+start_date <- "2010-01-01"
+end_date <- "2010-12-31"
+
 # centroid based
 
-if (!file.exists("Data/ibtracs_files/panels/storm_measures_centroid.rds")) {
+if (!file.exists(storm_measures_centroid_twfe_file)) {
 
-  storm_measures_centroid <- tc_daily_panel_centroids(
+  storm_measures_centroid_twfe <- tc_daily_panel_centroids(
     storm_list = storms_list,
     tracts = county_polygons_all,
-    start_date = "2010-01-01",
-    end_date = "2025-12-31",
-    verbose = 1,
+    start_date = start_date,
+    end_date = end_date,
+    tz = "local",
+    empiricalRMW = TRUE,
+    verbose = 2,
     fill_zeros = TRUE
   )
 
-  saveRDS(storm_measures_centroid, "Data/ibtracs_files/panels/storm_measures_centroid.rds")
+  saveRDS(storm_measures_centroid_twfe, storm_measures_centroid_twfe_file)
+
+}
+
+if (!file.exists(storm_measures_centroid_event_file)) {
+
+  storm_measures_centroid_event <- tc_daily_panel_centroids(
+    storm_list = storms_list,
+    tracts = county_polygons_all,
+    start_date = start_date,
+    end_date = end_date,
+    tz = "local",
+    empiricalRMW = TRUE,
+    verbose = 2,
+    fill_zeros = FALSE
+  )
+
+  saveRDS(storm_measures_centroid_event, storm_measures_centroid_event_file)
 
 }
 
 # polygon (so for whole county) based
 
-if (!file.exists("Data/ibtracs_files/panels/storm_measures_whole_county.rds")) {
+if (!file.exists(storm_measures_whole_county_twfe_file)) {
 
-  storm_measures_whole_county <- tc_daily_panel_from_tracts(
+  storm_measures_whole_county_twfe <- tc_daily_panel_polygons(
     storm_list = storms_list,
     tracts = county_polygons_all,
-    start_date = "2010-01-01",
-    end_date = "2025-12-31",
-    verbose = 1,
+    start_date = start_date,
+    end_date = end_date,
+    tz = "local",
+    empiricalRMW = TRUE,
+    verbose = 2,
     fill_zeros = TRUE
   )
   
-  saveRDS(storm_measures_whole_county, "Data/ibtracs_files/panels/storm_measures_whole_county.rds")
+  saveRDS(storm_measures_whole_county_twfe, storm_measures_whole_county_twfe_file)
+
+}
+
+if (!file.exists(storm_measures_whole_county_event_file)) {
+
+  storm_measures_whole_county_event <- tc_daily_panel_polygons(
+    storm_list = storms_list,
+    tracts = county_polygons_all,
+    start_date = start_date,
+    end_date = end_date,
+    tz = "local",
+    empiricalRMW = TRUE,
+    verbose = 2,
+    fill_zeros = FALSE
+  )
+  
+  saveRDS(storm_measures_whole_county_event, storm_measures_whole_county_event_file)
 
 }

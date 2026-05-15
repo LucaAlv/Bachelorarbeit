@@ -15,7 +15,7 @@ build_bm_tract_panel <- function(
   bearer,
   product_id = "VNP46A2",         
   ntl_variable = "DNB_BRDF-Corrected_NTL",                # Set the non-gap filled data as standard
-  quality_flag_rm = 2,                                    # 0: high-quality, persistent nighttime lights / 1: high-quality, ephermal nighttitme lights
+  quality_flag_rm = 2,                                    # Remove poor-quality/outlier/potential cloud-contaminated pixels; 0/1 are high-quality
   # Variables for QF_Cloud_Mask
   cloud_quality_min = 1,  # 2 = medium, 3 = high (according to table 4, bits 4-5)
   cloud_detect_ok = c(0,1), # 0 = confident clear, 1 = probably clear (according to table 4, bits 6-7)
@@ -194,6 +194,7 @@ build_bm_tract_panel <- function(
     date_min = min(dates),
     date_max = max(dates),
     created_at = Sys.time(),
+    completed = FALSE,
     log_file = log_file
   )
   saveRDS(manifest, file.path(out_dir, "run_manifest.rds"))
@@ -324,6 +325,19 @@ build_bm_tract_panel <- function(
     files
   }
 
+  remove_stale_output <- function(f) {
+    if (!overwrite || !file.exists(f)) {
+      return(invisible(TRUE))
+    }
+
+    unlink(f, force = TRUE)
+    if (file.exists(f)) {
+      stop("Could not remove stale output before overwrite: ", f)
+    }
+
+    invisible(TRUE)
+  }
+
   cleanup_downloads_for_day <- function(date_i) {
     if (!delete_downloads) {
       return(invisible(0L))
@@ -371,6 +385,7 @@ build_bm_tract_panel <- function(
       # returns true without printing it to the console
       return(invisible(TRUE))
     }
+    remove_stale_output(f)
 
     missing_imagery <- FALSE
     res <- tryCatch({
@@ -449,6 +464,7 @@ build_bm_tract_panel <- function(
     }
 
     missing_imagery <- FALSE
+    remove_stale_output(f)
     res <- tryCatch({
       # qf_r is an integer raster where each pixel is an integer / bit flag that encodes cloud-related information in its bits
       qf_r <- withCallingHandlers(
@@ -523,6 +539,7 @@ build_bm_tract_panel <- function(
     }
 
     missing_imagery <- FALSE
+    remove_stale_output(f)
     res <- tryCatch({
       # qf_r is an integer raster where each pixel is an integer / bit flag that encodes cloud-related information in its bits
       mqf_r <- withCallingHandlers(
@@ -656,6 +673,11 @@ build_bm_tract_panel <- function(
 
   final_path <- file.path(out_dir, "bm_panel.rds")
   saveRDS(panel, final_path)
+
+  manifest$completed <- TRUE
+  manifest$completed_at <- Sys.time()
+  saveRDS(manifest, file.path(out_dir, "run_manifest.rds"))
+
   log_line("Finished. Final panel saved to: ", final_path)
 
   return(panel)
