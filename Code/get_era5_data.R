@@ -4,6 +4,8 @@
 # 1) Accept the ERA5 single-levels licence in the Climate Data Store.
 # 2) Store your CDS token with ecmwfr::wf_set_key().
 
+# This function downloads the raw data files
+# And saves them in the specified output_dir
 download_era5_files <- function(
   shapefile,
   start_date,
@@ -21,6 +23,7 @@ download_era5_files <- function(
   retry = 30,
   total_timeout = NULL
 ) {
+
   # Read the shapefile, or use it directly if an sf object was supplied.
   shape <- if (inherits(shapefile, "sf")) {
     shapefile
@@ -33,6 +36,7 @@ download_era5_files <- function(
   bbox <- sf::st_bbox(shape)
 
   # CDS expects area as North, West, South, East.
+  # I.e. four coordinates not a shapefile
   area <- c(
     min(90, unname(bbox["ymax"]) + bbox_padding),
     max(-180, unname(bbox["xmin"]) - bbox_padding),
@@ -43,10 +47,12 @@ download_era5_files <- function(
   # Build one request per calendar month to keep files and CDS jobs manageable.
   start_date <- as.Date(start_date)
   end_date <- as.Date(end_date)
+
   if (is.na(start_date) || is.na(end_date) || end_date < start_date) {
     stop("`start_date` and `end_date` must define a valid date range.")
   }
 
+  # Extract relevant time data
   first_month <- as.Date(format(start_date, "%Y-%m-01"))
   last_month <- as.Date(format(end_date, "%Y-%m-01"))
   months <- seq.Date(first_month, last_month, by = "month")
@@ -55,7 +61,7 @@ download_era5_files <- function(
   # Save files in the requested folder.
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
-  # Use compact file names that still identify the requested variables.
+  # Use compact file names that still identify the requested variables
   data_format <- match.arg(tolower(data_format), choices = c("netcdf", "grib"))
   file_extension <- if (data_format == "netcdf") "nc" else "grib"
   variable_slug <- tolower(gsub("[^a-zA-Z0-9]+", "_", paste(variables, collapse = "_")))
@@ -65,6 +71,7 @@ download_era5_files <- function(
   batch_requests <- list()
   batch_download_indexes <- integer()
 
+  # Split up in monthly batches
   for (i in seq_along(months)) {
     month_start <- months[[i]]
     month_end <- seq.Date(month_start, by = "month", length.out = 2)[[2]] - 1
@@ -74,6 +81,7 @@ download_era5_files <- function(
       by = "day"
     )
 
+    # Build target file name
     target <- sprintf(
       "%s_%s_%s.%s",
       file_prefix,
@@ -81,6 +89,8 @@ download_era5_files <- function(
       variable_slug,
       file_extension
     )
+
+    # and set up target output path
     target_path <- file.path(output_dir, target)
 
     # Skip files that have already been downloaded unless overwrite = TRUE.
@@ -95,7 +105,8 @@ download_era5_files <- function(
       next
     }
 
-    # Build the request once; it can then be submitted either singly or as part
+    # Build the request for the API 
+    # it can then be submitted either singly or as part
     # of a batch, depending on `use_batch`.
     request <- list(
       dataset_short_name = "reanalysis-era5-single-levels",
@@ -121,7 +132,7 @@ download_era5_files <- function(
 
     if (use_batch) {
       # In batch mode, collect all pending monthly requests and submit them
-      # together after the loop with ecmwfr::wf_request_batch().
+      # together after the loop with wf_request_batch().
       batch_requests[[length(batch_requests) + 1]] <- request
       batch_download_indexes <- c(batch_download_indexes, i)
       next
@@ -140,12 +151,13 @@ download_era5_files <- function(
       verbose = TRUE
     )
 
+    # Update status
     downloads[[i]]$status <- "downloaded"
   }
 
   if (use_batch && length(batch_requests) > 0) {
     if (workers < 1) {
-      stop("`workers` must be at least 1 when `use_batch = TRUE`.")
+      stop("workers must be at least 1 when use_batch = TRUE.")
     }
 
     if (is.null(total_timeout)) {
@@ -190,36 +202,48 @@ extract_era5_nc_files <- function(
   id_cols = c("GEOID", "NAME"),
   overwrite = FALSE
 ) {
-  # Use the download manifest directly, or use a vector of NetCDF file paths.
+
+  # Use the download manifest directly, or use a vector of NetCDF file paths
   if (is.data.frame(nc_files) && "file_path" %in% names(nc_files)) {
     nc_files <- nc_files$file_path
   }
-  nc_files <- stats::na.omit(nc_files)
 
-  # Read the shapefile, or use it directly if an sf object was supplied.
+  # remove geometries and/or records that are NA    
+  nc_files <- na.omit(nc_files)
+
+  # Read the shapefile, or use it directly if an sf object was supplied
   shape <- if (inherits(shapefile, "sf")) {
     shapefile
   } else {
-    sf::st_read(shapefile, quiet = TRUE)
+    st_read(shapefile, quiet = TRUE)
   }
 
-  # Keep only the ID columns that are present in the shapefile.
+  # Keep only ID columns that are present in the shapefile
   id_cols <- intersect(id_cols, names(shape))
-  ids <- sf::st_drop_geometry(shape)[, id_cols, drop = FALSE]
+  # Drop geometry for faster processing
+  ids <- st_drop_geometry(shape)[, id_cols, drop = FALSE]
 
-  # Save extracted RDS files in the requested folder.
+  # set up output folder
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
+  # Create output vector of lists (12 lists)
   outputs <- vector("list", length(nc_files))
 
+  # Small reminder: nc_files is now a list of paths to the previously downloaded files
+  # now for each netcdf file
   for (i in seq_along(nc_files)) {
+
     nc_file <- nc_files[[i]]
+
+    # Create a matching output filename taht ends in .rds
     output_file <- file.path(
       output_dir,
+      # "file_path_sans_ext returns the file paths without extensions (and the leading dot)"
+      # extract name from download paths and construct output file name
       paste0(tools::file_path_sans_ext(basename(nc_file)), ".rds")
     )
 
-    # Skip files that have already been extracted unless overwrite = TRUE.
+    # Skip files that have already been extracted unless overwrite = TRUE
     if (file.exists(output_file) && !overwrite) {
       outputs[[i]] <- data.frame(
         nc_file = nc_file,
@@ -230,35 +254,52 @@ extract_era5_nc_files <- function(
       next
     }
 
-    # Read all NetCDF subdatasets and extract polygon means for each layer.
-    datasets <- terra::sds(nc_file)
+    # Read all NetCDF subdatasets and extract polygon means for each layer
+    # Note on size: 
+    # nrow and ncol come directly from the requested coordinates
+    # ERA5 is on a lat/lon grid (usually 0.25 degrees)
+    # CDS then returns however many lat and lon grid cells fully cover the requested
+    # bounding box
+    # nlyr: one file per month, per day, per hour (31 x 24 = 744)
+    datasets <- sds(nc_file)
     extracted_parts <- vector("list", length(datasets))
 
+    # Iterate through each ERA5 variable inside the netcdf file
     for (j in seq_along(datasets)) {
+      
       raster_data <- datasets[[j]]
       variable_name <- names(datasets)[[j]]
+
       if (is.na(variable_name) || variable_name == "") {
         variable_name <- paste0("variable_", j)
       }
 
-      # Use readable layer names when the NetCDF contains time metadata.
+      # Use readable layer names when the netcdf contains time metadata
       raster_time <- terra::time(raster_data)
-      if (length(raster_time) == terra::nlyr(raster_data) && !all(is.na(raster_time))) {
+
+      # case1 time metadata exists
+      if (length(raster_time) == nlyr(raster_data) && !all(is.na(raster_time))) {
         names(raster_data) <- paste0(
           variable_name,
           "_",
           format(as.POSIXct(raster_time, tz = "UTC"), "%Y%m%d_%H%M")
         )
-      } else if (terra::nlyr(raster_data) == 1) {
+      # case2 only one hour was requested
+      } else if (nlyr(raster_data) == 1) {
         names(raster_data) <- variable_name
+      # case 3 no time metadata exists
       } else {
-        names(raster_data) <- paste0(variable_name, "_", seq_len(terra::nlyr(raster_data)))
+        # then just number it
+        names(raster_data) <- paste0(variable_name, "_", seq_len(nlyr(raster_data)))
       }
 
-      # Match the shapefile CRS to the raster before extraction.
-      shape_for_raster <- sf::st_transform(shape, terra::crs(raster_data))
-      cell_area <- terra::cellSize(raster_data[[1]], unit = "m")
+      # Match the shapefile CRS to the raster before extraction
+      # I.e. convert to WGS84
+      shape_for_raster <- st_transform(shape, terra::crs(raster_data))
+      cell_area <- cellSize(raster_data[[1]], unit = "m")
 
+      # Calculate the area weighted mean for each polygon and each raster layer
+      # raster layer = hour
       extracted_values <- exactextractr::exact_extract(
         x = raster_data,
         y = shape_for_raster,
@@ -266,9 +307,11 @@ extract_era5_nc_files <- function(
         weights = cell_area,
         progress = FALSE
       )
+
       extracted_values <- as.data.frame(extracted_values)
       names(extracted_values) <- names(raster_data)
       extracted_parts[[j]] <- extracted_values
+      
     }
 
     # Combine polygon IDs with extracted values and save the result.

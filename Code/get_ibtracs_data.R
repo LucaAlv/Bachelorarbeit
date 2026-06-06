@@ -59,7 +59,7 @@ get_ibtracs_data <- function(output_type = "base", sid_input = NULL, area = "NA"
     sid_input <- sid_input[nzchar(trimws(sid_input))]   # drop "" / "   "
 
     if (length(sid_input) > 0) {
-      dat <- dplyr::filter(dat, sid %in% sid_input)
+      dat <- filter(dat, sid %in% sid_input)
 
       if (nrow(dat) == 0) {
         stop("No rows found for the provided SID(s): ", paste(sid_input, collapse = ", "), 
@@ -528,7 +528,7 @@ tc_daily_panel_centroids <- function(
 
   out_path <- paste0("Data/ibtracs_files/raw/tc_", start_date, "_", end_date, ".rds")
 
-  if (!exists(file.path(out_path))) {
+  if (!file.exists(file.path(out_path))) {
 
     # Get the storm estimates
     # This returns a nested list
@@ -624,19 +624,20 @@ tc_daily_panel_centroids <- function(
       left_join(out, by = c("GEOID", "date")) %>%
       mutate(
         # fill NAs with zeroes
-        tc_max_wind = dplyr::coalesce(tc_max_wind, 0),
-        tc_day = as.integer(tc_max_wind > 0)
+        tc_max_wind = coalesce(tc_max_wind, 0),
+        tc_mean_wind = coalesce(tc_mean_wind, 0),
+        tc_day = as.integer(tc_max_wind > 0 | tc_mean_wind > 0)
       ) %>%
       arrange(GEOID, date)
   } else {
     out_final <- full_panel %>%
       left_join(out, by = c("GEOID", "date")) %>%
       mutate(
-        tc_day = dplyr::if_else(
-          is.na(tc_max_wind),
+        tc_day = if_else(
+          is.na(tc_max_wind) & is.na(tc_mean_wind),
           0,
           as.integer(
-            coalesce(tc_max_wind, 0) > 0,
+            coalesce(tc_max_wind, 0) > 0 |
             coalesce(tc_mean_wind, 0) > 0
           )
         )
@@ -905,7 +906,7 @@ tc_daily_panel_polygons <- function(
           names(tract_vals_max)[2] <- "tc_poly_max_wind"
 
           storm_day_rows[[j]] <- tract_vals_max %>%
-            filter(dplyr::coalesce(tc_poly_max_wind, 0) > 0) %>%
+            filter(coalesce(tc_poly_max_wind, 0) > 0) %>%
             left_join(tz_context$id_lookup, by = "ID") %>%
             transmute(
               !!tract_id := GEOID,
@@ -953,11 +954,13 @@ tc_daily_panel_polygons <- function(
     )
   }
 
+  # Function to merge layers if one polygon experiences multiple storms
   merge_daily_layers <- function(existing, incoming) {
     if (is.null(existing)) {
       return(incoming)
     }
-    merged <- terra::mosaic(existing, incoming, fun = "max")
+    merged <- mosaic(existing, incoming, fun = "max")
+    # merged <- mosaic(existing, incoming, fun = "mean")
     names(merged) <- names(existing)
     merged
   }
@@ -1036,7 +1039,7 @@ tc_daily_panel_polygons <- function(
       }
 
       # Loop through every day (i.e. each daily layer)
-      for (j in seq_len(terra::nlyr(storm_daily))) {
+      for (j in seq_len(nlyr(storm_daily))) {
         layer_name <- names(storm_daily)[j]
 
         # for current timezone tz_value - for every day j / layer_name
@@ -1196,7 +1199,7 @@ tc_daily_panel_polygons <- function(
   # Build a full tract x day panel and fill non-storm days with 0
   if (fill_zeros) {
 
-    out <- full_panel %>%
+    out_final <- full_panel %>%
       left_join(out, by = c("GEOID", "date")) %>%
       mutate(
         # fill NAs with zeroes
@@ -1209,7 +1212,7 @@ tc_daily_panel_polygons <- function(
   # Or keep only the rows that already exist in out - i.e. storm days
   } else {
 
-    out <- full_panel %>%
+    out_final <- full_panel %>%
       left_join(out, by = c("GEOID", "date")) %>%
       mutate(
         tc_poly_day = if_else(
@@ -1220,9 +1223,9 @@ tc_daily_panel_polygons <- function(
             coalesce(tc_poly_mean_wind, 0) > 0
           )
         )
-      )
-
+      ) %>%
+      arrange(storm_name, date, GEOID)
   }
 
-  return(out)
+  return(out_final)
 }

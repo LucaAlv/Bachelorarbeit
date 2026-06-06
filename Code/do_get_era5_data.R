@@ -1,3 +1,6 @@
+
+source("Code/get_era5_data.R")
+
 make_era5_panel <- function(
   shapefile,
   start_date,
@@ -12,11 +15,12 @@ make_era5_panel <- function(
   overwrite_downloads = FALSE,
   overwrite_extracts = FALSE
 ) {
-  daily_summary <- match.arg(daily_summary)
+
+  daily_summary <- match.arg(daily_summary, daily_summary)
   panel_start_date <- as.Date(start_date)
   panel_end_date <- as.Date(end_date)
 
-  # 1) Download one ERA5 file per month. Existing files are skipped by default.
+  # 1. Download one ERA5 file per month. Existing files are skipped by default.
   download_manifest <- download_era5_files(
     shapefile = shapefile,
     start_date = start_date,
@@ -29,14 +33,14 @@ make_era5_panel <- function(
     overwrite = overwrite_downloads
   )
 
-  # 2) Extract hourly county-level values from every downloaded NetCDF file.
+  # 2. Extract hourly county-level values from every downloaded NetCDF file.
   extract_manifest <- extract_era5_nc_files(
     nc_files = download_manifest,
     shapefile = shapefile,
     overwrite = overwrite_extracts
   )
 
-  # 3) Convert hourly ERA5 values to a clean county-day panel.
+  # 3. Convert hourly ERA5 values to a clean county-day panel.
   summarise_fun <- switch(
     daily_summary,
     auto = {
@@ -71,6 +75,13 @@ make_era5_panel <- function(
 
   out
 }
+
+
+
+
+
+
+
 
 #### Load Data ####
 

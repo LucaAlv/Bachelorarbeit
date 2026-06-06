@@ -2,7 +2,6 @@ library(tidyverse)
 library(sf)
 
 out_panel <- readRDS("Data/out_panel.rds")
-out_panel_fl <- readRDS("Data/out_panel_fl.rds")
 
 make_weekly_geo_grid <- function(
   data,
