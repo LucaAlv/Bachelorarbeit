@@ -125,6 +125,18 @@ if (!file.exists("Data/era5_files/panels/era5_pr_2018_tp_panel.rds")) {
   )
 }
 
+# Precipitation - Puerto Rico - 2019
+if (!file.exists("Data/era5_files/panels/era5_pr_2019_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_pr,
+    start_date = "2019-01-01",
+    end_date = "2019-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_pr",
+    daily_output_file = "Data/era5_files/panels/era5_pr_2019_tp_panel.rds",
+  )
+}
+
 ## Florida
 
 # Precipitation - Florida - 2016
@@ -160,6 +172,18 @@ if (!file.exists("Data/era5_files/panels/era5_fl_2018_tp_panel.rds")) {
     variables = c("total_precipitation"),
     file_prefix = "era5_fl",
     daily_output_file = "Data/era5_files/panels/era5_fl_2018_tp_panel.rds",
+  )
+}
+
+# Precipitation - Florida - 2019
+if (!file.exists("Data/era5_files/panels/era5_fl_2019_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_fl,
+    start_date = "2019-01-01",
+    end_date = "2019-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_fl",
+    daily_output_file = "Data/era5_files/panels/era5_fl_2019_tp_panel.rds",
   )
 }
 
@@ -201,6 +225,18 @@ if (!file.exists("Data/era5_files/panels/era5_tx_2018_tp_panel.rds")) {
   )
 }
 
+# Precipitation - Texas - 2019
+if (!file.exists("Data/era5_files/panels/era5_tx_2019_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_tx,
+    start_date = "2019-01-01",
+    end_date = "2019-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_tx",
+    daily_output_file = "Data/era5_files/panels/era5_tx_2019_tp_panel.rds",
+  )
+}
+
 ## North Carolina
 
 # Precipitation - North Carolina - 2016
@@ -236,6 +272,18 @@ if (!file.exists("Data/era5_files/panels/era5_nc_2018_tp_panel.rds")) {
     variables = c("total_precipitation"),
     file_prefix = "era5_nc",
     daily_output_file = "Data/era5_files/panels/era5_nc_2018_tp_panel.rds",
+  )
+}
+
+# Precipitation - North Carolina - 2019
+if (!file.exists("Data/era5_files/panels/era5_nc_2019_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_nc,
+    start_date = "2019-01-01",
+    end_date = "2019-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_nc",
+    daily_output_file = "Data/era5_files/panels/era5_nc_2019_tp_panel.rds",
   )
 }
 
@@ -277,6 +325,18 @@ if (!file.exists("Data/era5_files/panels/era5_sc_2018_tp_panel.rds")) {
   )
 }
 
+# Precipitation - South Carolina - 2019
+if (!file.exists("Data/era5_files/panels/era5_sc_2019_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_sc,
+    start_date = "2019-01-01",
+    end_date = "2019-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_sc",
+    daily_output_file = "Data/era5_files/panels/era5_sc_2019_tp_panel.rds",
+  )
+}
+
 ## Louisiana
 
 # Precipitation - Louisiana - 2016
@@ -312,6 +372,18 @@ if (!file.exists("Data/era5_files/panels/era5_la_2018_tp_panel.rds")) {
     variables = c("total_precipitation"),
     file_prefix = "era5_la",
     daily_output_file = "Data/era5_files/panels/era5_la_2018_tp_panel.rds",
+  )
+}
+
+# Precipitation - Louisiana - 2019
+if (!file.exists("Data/era5_files/panels/era5_la_2019_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_la,
+    start_date = "2019-01-01",
+    end_date = "2019-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_la",
+    daily_output_file = "Data/era5_files/panels/era5_la_2019_tp_panel.rds",
   )
 }
 
@@ -355,6 +427,18 @@ if (!file.exists("Data/era5_files/panels/era5_pr_2018_wg_panel.rds")) {
   )
 }
 
+# Wind Gust - Puerto Rico - 2019
+if (!file.exists("Data/era5_files/panels/era5_pr_2019_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_pr,
+    start_date = "2019-01-01",
+    end_date = "2019-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_pr",
+    daily_output_file = "Data/era5_files/panels/era5_pr_2019_wg_panel.rds",
+  )
+}
+
 ## Florida
 
 # Wind Gust - Florida - 2016
@@ -390,6 +474,18 @@ if (!file.exists("Data/era5_files/panels/era5_fl_2018_wg_panel.rds")) {
     variables = c("10m_wind_gust_since_previous_post_processing"),
     file_prefix = "era5_fl",
     daily_output_file = "Data/era5_files/panels/era5_fl_2018_wg_panel.rds",
+  )
+}
+
+# Wind Gust - Florida - 2019
+if (!file.exists("Data/era5_files/panels/era5_fl_2019_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_fl,
+    start_date = "2019-01-01",
+    end_date = "2019-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_fl",
+    daily_output_file = "Data/era5_files/panels/era5_fl_2019_wg_panel.rds",
   )
 }
 
@@ -431,6 +527,18 @@ if (!file.exists("Data/era5_files/panels/era5_tx_2018_wg_panel.rds")) {
   )
 }
 
+# Wind Gust - Texas - 2019
+if (!file.exists("Data/era5_files/panels/era5_tx_2019_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_tx,
+    start_date = "2019-01-01",
+    end_date = "2019-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_tx",
+    daily_output_file = "Data/era5_files/panels/era5_tx_2019_wg_panel.rds",
+  )
+}
+
 ## North Carolina
 
 # Wind Gust - North Carolina - 2016
@@ -466,6 +574,18 @@ if (!file.exists("Data/era5_files/panels/era5_nc_2018_wg_panel.rds")) {
     variables = c("10m_wind_gust_since_previous_post_processing"),
     file_prefix = "era5_nc",
     daily_output_file = "Data/era5_files/panels/era5_nc_2018_wg_panel.rds",
+  )
+}
+
+# Wind Gust - North Carolina - 2019
+if (!file.exists("Data/era5_files/panels/era5_nc_2019_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_nc,
+    start_date = "2019-01-01",
+    end_date = "2019-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_nc",
+    daily_output_file = "Data/era5_files/panels/era5_nc_2019_wg_panel.rds",
   )
 }
 
@@ -507,6 +627,18 @@ if (!file.exists("Data/era5_files/panels/era5_sc_2018_wg_panel.rds")) {
   )
 }
 
+# Wind Gust - South Carolina - 2019
+if (!file.exists("Data/era5_files/panels/era5_sc_2019_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_sc,
+    start_date = "2019-01-01",
+    end_date = "2019-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_sc",
+    daily_output_file = "Data/era5_files/panels/era5_sc_2019_wg_panel.rds",
+  )
+}
+
 ## Louisiana
 
 # Wind Gust - Louisiana - 2016
@@ -542,5 +674,17 @@ if (!file.exists("Data/era5_files/panels/era5_la_2018_wg_panel.rds")) {
     variables = c("10m_wind_gust_since_previous_post_processing"),
     file_prefix = "era5_la",
     daily_output_file = "Data/era5_files/panels/era5_la_2018_wg_panel.rds",
+  )
+}
+
+# Wind Gust - Louisiana - 2019
+if (!file.exists("Data/era5_files/panels/era5_la_2019_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_la,
+    start_date = "2019-01-01",
+    end_date = "2019-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_la",
+    daily_output_file = "Data/era5_files/panels/era5_la_2019_wg_panel.rds",
   )
 }
