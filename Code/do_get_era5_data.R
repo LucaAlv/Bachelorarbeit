@@ -89,6 +89,18 @@ make_era5_panel <- function(
 
 ## Puerto Rico
 
+# Precipitation - Puerto Rico - 2015
+if (!file.exists("Data/era5_files/panels/era5_pr_2015_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_pr,
+    start_date = "2015-01-01",
+    end_date = "2015-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_pr",
+    daily_output_file = "Data/era5_files/panels/era5_pr_2015_tp_panel.rds",
+  )
+}
+
 # Precipitation - Puerto Rico - 2016
 if (!file.exists("Data/era5_files/panels/era5_pr_2016_tp_panel.rds")) {
   make_era5_panel(
@@ -137,7 +149,43 @@ if (!file.exists("Data/era5_files/panels/era5_pr_2019_tp_panel.rds")) {
   )
 }
 
+# Precipitation - Puerto Rico - 2020
+if (!file.exists("Data/era5_files/panels/era5_pr_2020_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_pr,
+    start_date = "2020-01-01",
+    end_date = "2020-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_pr",
+    daily_output_file = "Data/era5_files/panels/era5_pr_2020_tp_panel.rds",
+  )
+}
+
+# Precipitation - Puerto Rico - 2020
+if (!file.exists("Data/era5_files/panels/era5_pr_2024_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_pr,
+    start_date = "2024-01-01",
+    end_date = "2024-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_pr",
+    daily_output_file = "Data/era5_files/panels/era5_pr_2024_tp_panel.rds",
+  )
+}
+
 ## Florida
+
+# Precipitation - Florida - 2015
+if (!file.exists("Data/era5_files/panels/era5_fl_2015_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_fl,
+    start_date = "2015-01-01",
+    end_date = "2015-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_fl",
+    daily_output_file = "Data/era5_files/panels/era5_fl_2015_tp_panel.rds",
+  )
+}
 
 # Precipitation - Florida - 2016
 if (!file.exists("Data/era5_files/panels/era5_fl_2016_tp_panel.rds")) {
@@ -187,7 +235,43 @@ if (!file.exists("Data/era5_files/panels/era5_fl_2019_tp_panel.rds")) {
   )
 }
 
+# Precipitation - Florida - 2020
+if (!file.exists("Data/era5_files/panels/era5_fl_2020_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_fl,
+    start_date = "2020-01-01",
+    end_date = "2020-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_fl",
+    daily_output_file = "Data/era5_files/panels/era5_fl_2020_tp_panel.rds",
+  )
+}
+
+# Precipitation - Florida - 2020
+if (!file.exists("Data/era5_files/panels/era5_fl_2024_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_fl,
+    start_date = "2024-01-01",
+    end_date = "2024-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_fl",
+    daily_output_file = "Data/era5_files/panels/era5_fl_2024_tp_panel.rds",
+  )
+}
+
 ## Texas
+
+# Precipitation - Texas - 2015
+if (!file.exists("Data/era5_files/panels/era5_tx_2015_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_tx,
+    start_date = "2015-01-01",
+    end_date = "2015-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_tx",
+    daily_output_file = "Data/era5_files/panels/era5_tx_2015_tp_panel.rds",
+  )
+}
 
 # Precipitation - Texas - 2016
 if (!file.exists("Data/era5_files/panels/era5_tx_2016_tp_panel.rds")) {
@@ -237,7 +321,43 @@ if (!file.exists("Data/era5_files/panels/era5_tx_2019_tp_panel.rds")) {
   )
 }
 
+# Precipitation - Texas - 2020
+if (!file.exists("Data/era5_files/panels/era5_tx_2020_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_tx,
+    start_date = "2020-01-01",
+    end_date = "2020-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_tx",
+    daily_output_file = "Data/era5_files/panels/era5_tx_2020_tp_panel.rds",
+  )
+}
+
+# Precipitation - Texas - 2020
+if (!file.exists("Data/era5_files/panels/era5_tx_2024_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_tx,
+    start_date = "2024-01-01",
+    end_date = "2024-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_tx",
+    daily_output_file = "Data/era5_files/panels/era5_tx_2024_tp_panel.rds",
+  )
+}
+
 ## North Carolina
+
+# Precipitation - North Carolina - 2015
+if (!file.exists("Data/era5_files/panels/era5_nc_2015_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_nc,
+    start_date = "2015-01-01",
+    end_date = "2015-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_nc",
+    daily_output_file = "Data/era5_files/panels/era5_nc_2015_tp_panel.rds",
+  )
+}
 
 # Precipitation - North Carolina - 2016
 if (!file.exists("Data/era5_files/panels/era5_nc_2016_tp_panel.rds")) {
@@ -287,7 +407,43 @@ if (!file.exists("Data/era5_files/panels/era5_nc_2019_tp_panel.rds")) {
   )
 }
 
+# Precipitation - North Carolina - 2020
+if (!file.exists("Data/era5_files/panels/era5_nc_2020_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_nc,
+    start_date = "2020-01-01",
+    end_date = "2020-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_nc",
+    daily_output_file = "Data/era5_files/panels/era5_nc_2020_tp_panel.rds",
+  )
+}
+
+# Precipitation - North Carolina - 2020
+if (!file.exists("Data/era5_files/panels/era5_nc_2024_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_nc,
+    start_date = "2024-01-01",
+    end_date = "2024-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_nc",
+    daily_output_file = "Data/era5_files/panels/era5_nc_2024_tp_panel.rds",
+  )
+}
+
 ## South Carolina
+
+# Precipitation - South Carolina - 2015
+if (!file.exists("Data/era5_files/panels/era5_sc_2015_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_sc,
+    start_date = "2015-01-01",
+    end_date = "2015-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_sc",
+    daily_output_file = "Data/era5_files/panels/era5_sc_2015_tp_panel.rds",
+  )
+}
 
 # Precipitation - South Carolina - 2016
 if (!file.exists("Data/era5_files/panels/era5_sc_2016_tp_panel.rds")) {
@@ -337,7 +493,43 @@ if (!file.exists("Data/era5_files/panels/era5_sc_2019_tp_panel.rds")) {
   )
 }
 
+# Precipitation - South Carolina - 2020
+if (!file.exists("Data/era5_files/panels/era5_sc_2020_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_sc,
+    start_date = "2020-01-01",
+    end_date = "2020-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_sc",
+    daily_output_file = "Data/era5_files/panels/era5_sc_2020_tp_panel.rds",
+  )
+}
+
+# Precipitation - South Carolina - 2020
+if (!file.exists("Data/era5_files/panels/era5_sc_2024_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_sc,
+    start_date = "2024-01-01",
+    end_date = "2024-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_sc",
+    daily_output_file = "Data/era5_files/panels/era5_sc_2024_tp_panel.rds",
+  )
+}
+
 ## Louisiana
+
+# Precipitation - Louisiana - 2015
+if (!file.exists("Data/era5_files/panels/era5_la_2015_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_la,
+    start_date = "2015-01-01",
+    end_date = "2015-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_la",
+    daily_output_file = "Data/era5_files/panels/era5_la_2015_tp_panel.rds",
+  )
+}
 
 # Precipitation - Louisiana - 2016
 if (!file.exists("Data/era5_files/panels/era5_la_2016_tp_panel.rds")) {
@@ -387,9 +579,45 @@ if (!file.exists("Data/era5_files/panels/era5_la_2019_tp_panel.rds")) {
   )
 }
 
+# Precipitation - Louisiana - 2020
+if (!file.exists("Data/era5_files/panels/era5_la_2020_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_la,
+    start_date = "2020-01-01",
+    end_date = "2020-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_la",
+    daily_output_file = "Data/era5_files/panels/era5_la_2020_tp_panel.rds",
+  )
+}
+
+# Precipitation - Louisiana - 2020
+if (!file.exists("Data/era5_files/panels/era5_la_2024_tp_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_la,
+    start_date = "2024-01-01",
+    end_date = "2024-12-31",
+    variables = c("total_precipitation"),
+    file_prefix = "era5_la",
+    daily_output_file = "Data/era5_files/panels/era5_la_2024_tp_panel.rds",
+  )
+}
+
 ### Wind
 
 ## Puerto Rico
+
+# Wind Gust - Puerto Rico - 2015
+if (!file.exists("Data/era5_files/panels/era5_pr_2015_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_pr,
+    start_date = "2015-01-01",
+    end_date = "2015-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_pr",
+    daily_output_file = "Data/era5_files/panels/era5_pr_2015_wg_panel.rds",
+  )
+}
 
 # Wind Gust - Puerto Rico - 2016
 if (!file.exists("Data/era5_files/panels/era5_pr_2016_wg_panel.rds")) {
@@ -439,7 +667,43 @@ if (!file.exists("Data/era5_files/panels/era5_pr_2019_wg_panel.rds")) {
   )
 }
 
+# Wind Gust - Puerto Rico - 2020
+if (!file.exists("Data/era5_files/panels/era5_pr_2020_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_pr,
+    start_date = "2020-01-01",
+    end_date = "2020-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_pr",
+    daily_output_file = "Data/era5_files/panels/era5_pr_2020_wg_panel.rds",
+  )
+}
+
+# Wind Gust - Puerto Rico - 2020
+if (!file.exists("Data/era5_files/panels/era5_pr_2024_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_pr,
+    start_date = "2024-01-01",
+    end_date = "2024-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_pr",
+    daily_output_file = "Data/era5_files/panels/era5_pr_2024_wg_panel.rds",
+  )
+}
+
 ## Florida
+
+# Wind Gust - Florida - 2015
+if (!file.exists("Data/era5_files/panels/era5_fl_2015_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_fl,
+    start_date = "2015-01-01",
+    end_date = "2015-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_fl",
+    daily_output_file = "Data/era5_files/panels/era5_fl_2015_wg_panel.rds",
+  )
+}
 
 # Wind Gust - Florida - 2016
 if (!file.exists("Data/era5_files/panels/era5_fl_2016_wg_panel.rds")) {
@@ -489,7 +753,43 @@ if (!file.exists("Data/era5_files/panels/era5_fl_2019_wg_panel.rds")) {
   )
 }
 
+# Wind Gust - Florida - 2020
+if (!file.exists("Data/era5_files/panels/era5_fl_2020_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_fl,
+    start_date = "2020-01-01",
+    end_date = "2020-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_fl",
+    daily_output_file = "Data/era5_files/panels/era5_fl_2020_wg_panel.rds",
+  )
+}
+
+# Wind Gust - Florida - 2020
+if (!file.exists("Data/era5_files/panels/era5_fl_2024_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_fl,
+    start_date = "2024-01-01",
+    end_date = "2024-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_fl",
+    daily_output_file = "Data/era5_files/panels/era5_fl_2024_wg_panel.rds",
+  )
+}
+
 ## Texas
+
+# Wind Gust - Texas - 2015
+if (!file.exists("Data/era5_files/panels/era5_tx_2015_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_tx,
+    start_date = "2015-01-01",
+    end_date = "2015-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_tx",
+    daily_output_file = "Data/era5_files/panels/era5_tx_2015_wg_panel.rds",
+  )
+}
 
 # Wind Gust - Texas - 2016
 if (!file.exists("Data/era5_files/panels/era5_tx_2016_wg_panel.rds")) {
@@ -539,7 +839,43 @@ if (!file.exists("Data/era5_files/panels/era5_tx_2019_wg_panel.rds")) {
   )
 }
 
+# Wind Gust - Texas - 2020
+if (!file.exists("Data/era5_files/panels/era5_tx_2020_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_tx,
+    start_date = "2020-01-01",
+    end_date = "2020-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_tx",
+    daily_output_file = "Data/era5_files/panels/era5_tx_2020_wg_panel.rds",
+  )
+}
+
+# Wind Gust - Texas - 2020
+if (!file.exists("Data/era5_files/panels/era5_tx_2024_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_tx,
+    start_date = "2024-01-01",
+    end_date = "2024-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_tx",
+    daily_output_file = "Data/era5_files/panels/era5_tx_2024_wg_panel.rds",
+  )
+}
+
 ## North Carolina
+
+# Wind Gust - North Carolina - 2015
+if (!file.exists("Data/era5_files/panels/era5_nc_2015_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_nc,
+    start_date = "2015-01-01",
+    end_date = "2015-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_nc",
+    daily_output_file = "Data/era5_files/panels/era5_nc_2015_wg_panel.rds",
+  )
+}
 
 # Wind Gust - North Carolina - 2016
 if (!file.exists("Data/era5_files/panels/era5_nc_2016_wg_panel.rds")) {
@@ -589,7 +925,44 @@ if (!file.exists("Data/era5_files/panels/era5_nc_2019_wg_panel.rds")) {
   )
 }
 
+# Wind Gust - North Carolina - 2020
+if (!file.exists("Data/era5_files/panels/era5_nc_2020_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_nc,
+    start_date = "2020-01-01",
+    end_date = "2020-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_nc",
+    daily_output_file = "Data/era5_files/panels/era5_nc_2020_wg_panel.rds",
+  )
+}
+
+# Wind Gust - North Carolina - 2020
+if (!file.exists("Data/era5_files/panels/era5_nc_2024_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_nc,
+    start_date = "2024-01-01",
+    end_date = "2024-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_nc",
+    daily_output_file = "Data/era5_files/panels/era5_nc_2024_wg_panel.rds",
+  )
+}
+
 ## South Carolina
+
+# Wind Gust - South Carolina - 2015
+if (!file.exists("Data/era5_files/panels/era5_sc_2015_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_sc,
+    start_date = "2015-01-01",
+    end_date = "2015-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_sc",
+    daily_output_file = "Data/era5_files/panels/era5_sc_2015_wg_panel.rds",
+  )
+}
+
 
 # Wind Gust - South Carolina - 2016
 if (!file.exists("Data/era5_files/panels/era5_sc_2016_wg_panel.rds")) {
@@ -639,7 +1012,43 @@ if (!file.exists("Data/era5_files/panels/era5_sc_2019_wg_panel.rds")) {
   )
 }
 
+# Wind Gust - South Carolina - 2020
+if (!file.exists("Data/era5_files/panels/era5_sc_2020_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_sc,
+    start_date = "2020-01-01",
+    end_date = "2020-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_sc",
+    daily_output_file = "Data/era5_files/panels/era5_sc_2020_wg_panel.rds",
+  )
+}
+
+# Wind Gust - South Carolina - 2020
+if (!file.exists("Data/era5_files/panels/era5_sc_2024_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_sc,
+    start_date = "2024-01-01",
+    end_date = "2024-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_sc",
+    daily_output_file = "Data/era5_files/panels/era5_sc_2024_wg_panel.rds",
+  )
+}
+
 ## Louisiana
+
+# Wind Gust - Louisiana - 2015
+if (!file.exists("Data/era5_files/panels/era5_la_2015_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_la,
+    start_date = "2015-01-01",
+    end_date = "2015-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_la",
+    daily_output_file = "Data/era5_files/panels/era5_la_2015_wg_panel.rds",
+  )
+}
 
 # Wind Gust - Louisiana - 2016
 if (!file.exists("Data/era5_files/panels/era5_la_2016_wg_panel.rds")) {
@@ -688,3 +1097,29 @@ if (!file.exists("Data/era5_files/panels/era5_la_2019_wg_panel.rds")) {
     daily_output_file = "Data/era5_files/panels/era5_la_2019_wg_panel.rds",
   )
 }
+
+# Wind Gust - Louisiana - 2020
+if (!file.exists("Data/era5_files/panels/era5_la_2020_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_la,
+    start_date = "2020-01-01",
+    end_date = "2020-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_la",
+    daily_output_file = "Data/era5_files/panels/era5_la_2020_wg_panel.rds",
+  )
+}
+
+# Wind Gust - Louisiana - 2020
+if (!file.exists("Data/era5_files/panels/era5_la_2024_wg_panel.rds")) {
+  make_era5_panel(
+    shapefile = county_polygons_la,
+    start_date = "2024-01-01",
+    end_date = "2024-12-31",
+    variables = c("10m_wind_gust_since_previous_post_processing"),
+    file_prefix = "era5_la",
+    daily_output_file = "Data/era5_files/panels/era5_la_2024_wg_panel.rds",
+  )
+}
+
+

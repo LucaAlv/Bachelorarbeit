@@ -16,7 +16,8 @@ date_seq_2016 <- seq.Date(from = as.Date("2016-01-01"), to = as.Date("2016-12-31
 date_seq_2017 <- seq.Date(from = as.Date("2017-01-01"), to = as.Date("2017-12-31"), by = "day")
 date_seq_2018 <- seq.Date(from = as.Date("2018-01-01"), to = as.Date("2018-12-31"), by = "day")
 date_seq_2019 <- seq.Date(from = as.Date("2019-01-01"), to = as.Date("2019-12-31"), by = "day")
-date_seq_2024 <- seq.Date(from = as.Date("2019-01-01"), to = as.Date("2019-12-31"), by = "day")
+date_seq_2020 <- seq.Date(from = as.Date("2020-01-01"), to = as.Date("2020-12-31"), by = "day")
+date_seq_2024 <- seq.Date(from = as.Date("2024-01-01"), to = as.Date("2024-12-31"), by = "day")
 
 ntl_variable <- "Gap_Filled_DNB_BRDF-Corrected_NTL"
 
@@ -74,6 +75,19 @@ if (!file.exists(bm_panel_path("pr_gapfilled_2019"))) {
     quality_flag_rm = quality_flag_rm,
     quiet = FALSE,
     cache_key = "pr_gapfilled_2019",
+    delete_downloads = TRUE
+  )
+}
+
+if (!file.exists(bm_panel_path("pr_gapfilled_2020"))) {
+  ntl_panel_pr_2020 <- build_bm_tract_panel(
+    tracts_sf = county_polygons_pr,
+    dates = date_seq_2020,
+    bearer = input_nasa_bearer,
+    ntl_variable = ntl_variable,
+    quality_flag_rm = quality_flag_rm,
+    quiet = FALSE,
+    cache_key = "pr_gapfilled_2020",
     delete_downloads = TRUE
   )
 }
@@ -145,6 +159,19 @@ if (!file.exists(bm_panel_path("fl_gapfilled_2019"))) {
   )
 }
 
+if (!file.exists(bm_panel_path("fl_gapfilled_2020"))) {
+  ntl_panel_fl_2020 <- build_bm_tract_panel(
+    tracts_sf = county_polygons_fl,
+    dates = date_seq_2020,
+    bearer = input_nasa_bearer,
+    ntl_variable = ntl_variable,
+    quality_flag_rm = quality_flag_rm,
+    quiet = FALSE,
+    cache_key = "fl_gapfilled_2020",
+    delete_downloads = TRUE
+  )
+}
+
 if (!file.exists(bm_panel_path("fl_gapfilled_2024"))) {
   ntl_panel_fl_2024 <- build_bm_tract_panel(
     tracts_sf = county_polygons_fl,
@@ -212,6 +239,19 @@ if (!file.exists(bm_panel_path("tx_gapfilled_2019"))) {
   )
 }
 
+if (!file.exists(bm_panel_path("tx_gapfilled_2020"))) {
+  ntl_panel_tx_2020 <- build_bm_tract_panel(
+    tracts_sf = county_polygons_tx,
+    dates = date_seq_2020,
+    bearer = input_nasa_bearer,
+    ntl_variable = ntl_variable,
+    quality_flag_rm = quality_flag_rm,
+    quiet = FALSE,
+    cache_key = "tx_gapfilled_2020",
+    delete_downloads = TRUE
+  )
+}
+
 if (!file.exists(bm_panel_path("tx_gapfilled_2024"))) {
   ntl_panel_tx_2024 <- build_bm_tract_panel(
     tracts_sf = county_polygons_tx,
@@ -266,7 +306,6 @@ if (!file.exists(bm_panel_path("nc_gapfilled_2018"))) {
   )
 }
 
-
 if (!file.exists(bm_panel_path("nc_gapfilled_2019"))) {
   ntl_panel_nc_2019 <- build_bm_tract_panel(
     tracts_sf = county_polygons_nc,
@@ -276,6 +315,19 @@ if (!file.exists(bm_panel_path("nc_gapfilled_2019"))) {
     quality_flag_rm = quality_flag_rm,
     quiet = FALSE,
     cache_key = "nc_gapfilled_2019",
+    delete_downloads = TRUE
+  )
+}
+
+if (!file.exists(bm_panel_path("nc_gapfilled_2020"))) {
+  ntl_panel_nc_2020 <- build_bm_tract_panel(
+    tracts_sf = county_polygons_nc,
+    dates = date_seq_2020,
+    bearer = input_nasa_bearer,
+    ntl_variable = ntl_variable,
+    quality_flag_rm = quality_flag_rm,
+    quiet = FALSE,
+    cache_key = "nc_gapfilled_2020",
     delete_downloads = TRUE
   )
 }
@@ -347,6 +399,19 @@ if (!file.exists(bm_panel_path("sc_gapfilled_2019"))) {
   )
 }
 
+if (!file.exists(bm_panel_path("sc_gapfilled_2020"))) {
+  ntl_panel_sc_2020 <- build_bm_tract_panel(
+    tracts_sf = county_polygons_sc,
+    dates = date_seq_2020,
+    bearer = input_nasa_bearer,
+    ntl_variable = ntl_variable,
+    quality_flag_rm = quality_flag_rm,
+    quiet = FALSE,
+    cache_key = "sc_gapfilled_2020",
+    delete_downloads = TRUE
+  )
+}
+
 if (!file.exists(bm_panel_path("sc_gapfilled_2024"))) {
   ntl_panel_sc_2024 <- build_bm_tract_panel(
     tracts_sf = county_polygons_sc,
@@ -413,6 +478,20 @@ if (!file.exists(bm_panel_path("la_gapfilled_2019"))) {
     delete_downloads = TRUE
   )
 }
+
+if (!file.exists(bm_panel_path("la_gapfilled_2020"))) {
+  ntl_panel_la_2020 <- build_bm_tract_panel(
+    tracts_sf = county_polygons_la,
+    dates = date_seq_2020,
+    bearer = input_nasa_bearer,
+    ntl_variable = ntl_variable,
+    quality_flag_rm = quality_flag_rm,
+    quiet = FALSE,
+    cache_key = "la_gapfilled_2020",
+    delete_downloads = TRUE
+  )
+}
+
 if (!file.exists(bm_panel_path("la_gapfilled_2024"))) {
   ntl_panel_la_2024 <- build_bm_tract_panel(
     tracts_sf = county_polygons_la,

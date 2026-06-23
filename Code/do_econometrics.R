@@ -120,13 +120,10 @@ print("Making base lagged TWFE model plots and graphs")
 
 etable(
   base_mod_stormbi, base_mod_storm, base_mod_wind, base_mod_prec, base_mod_weather,
-  base_lag_mod_stormbi, base_lag_mod_storm, base_lag_mod_wind, base_lag_mod_prec, base_lag_mod_weather,
-  tex = FALSE,
-  file = "Output/model_tables/table_1_base_twfe.txt",
-  replace = TRUE
+  base_lag_mod_stormbi, base_lag_mod_storm, base_lag_mod_wind, base_lag_mod_prec, base_lag_mod_weather
 )
 
-
+gc()
 
 
 
@@ -139,27 +136,234 @@ etable(
 
 #### STACKED EVENT STUDY 
 
+# Check for unsupported periods
+# i.e those periods that only have treated observations or only control observations
+check_period_support <- function(data) {
+
+  maria_unsupported_rel_periods <- data %>%
+    group_by(rel_period) %>%
+    summarise(
+      # are there any treated observations in this period?
+      has_treated = any(treated_for_event),
+      # are there any control observations in this period?
+      has_control = any(!treated_for_event),
+      .groups = "drop"
+    ) %>%
+    filter(!has_treated | !has_control) %>%
+    pull(rel_period)
+
+  if (length(maria_unsupported_rel_periods) > 0) {
+    message(
+      "Dropping unsupported Maria relative periods: ",
+      paste(maria_unsupported_rel_periods, collapse = ", ")
+    )
+
+    data <- data %>%
+      filter(!rel_period %in% maria_unsupported_rel_periods)
+  }
+
+  return(data)
+
+}
+
+
 ### ALL STORMS
 
-## FULL MODEL BINARY TREATMENT
+
 
 # sem = stacked stacked event study model
+
+## FULL MODEL BINARY TREATMENT
 
 # Full combined_local_rel_period
 df_full_binary <- stacked_event_panel %>%
   filter(!is.na(combined_local_rel_period)) %>%
   # Important modeling choice: duplicate storms are removed
   filter(!period_has_other_storm) %>%
-  filter(!is.na(ntl_ihs), !is.na(hq_share_mean))
+  filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
+  check_period_support()
 
 sem_full_binary <- feols(
-  ntl_ihs ~ i(combined_local_rel_period, treated_for_event, ref = -1)  |
+  ntl_ihs ~ i(combined_local_rel_period, treated_for_event, ref = -5)  |
     geoid_storm_id + storm_period_id,
   data = df_full_binary,
   weights = ~ (hq_share_mean * stack_weight),
   vcov = ~ GEOID + storm_name
 )
 
+iplot(
+  sem_full_binary,
+  ref.line = -1,
+  main = "Stacked event study",
+  xlab = "Relative period",
+  ylab = "Effect on asinh(nightlights)"
+)
+
+##!! FULL MODEL BINARY TREATMENT COMBINED RELATIVE PRE-PERIODS
+
+event_bin_levels <- c(
+  "pre_-8_-3",
+  "pre_-2_-1",
+  "impact_0",
+  "post_1_3",
+  "post_4_8",
+  "post_9_20"
+)
+
+df_full_prebase <- stacked_event_panel %>%
+  filter(!is.na(combined_local_rel_period)) %>%
+  # Important modeling choice: duplicate storms are removed
+  filter(!period_has_other_storm) %>%
+  filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
+  check_period_support() %>%
+  mutate(
+    event_bin = case_when(
+      between(combined_local_rel_period, -8, -3) ~ "pre_-8_-3",
+      between(combined_local_rel_period, -2, -1) ~ "pre_-2_-1",
+      combined_local_rel_period == 0 ~ "impact_0",
+      between(combined_local_rel_period, 1, 3) ~ "post_1_3",
+      between(combined_local_rel_period, 4, 8) ~ "post_4_8",
+      between(combined_local_rel_period, 9, 20) ~ "post_9_20",
+      TRUE ~ NA_character_
+    ),
+    event_bin = factor(event_bin, levels = event_bin_levels, ordered = TRUE)
+  ) %>%
+  filter(!is.na(event_bin)) %>%
+  check_period_support()
+
+sem_full_prebase <- feols(
+  ntl_ihs ~ i(event_bin, treated_for_event, ref = "pre_-8_-3") |
+    geoid_storm_id + storm_period_id,
+  data = filter(df_full_prebase, !is.na(event_bin)),
+  weights = ~ (hq_share_mean * stack_weight),
+  vcov = ~ GEOID + storm_name
+)
+
+etable(sem_full_prebase)
+
+iplot(
+  sem_full_prebase,
+  ref.line = -1,
+  main = "Stacked event study",
+  xlab = "Relative period",
+  ylab = "Effect on asinh(nightlights)"
+)
+
+## FULL MODEL CONTINUOUS TREATMENT
+
+df_full_cont <- stacked_event_panel %>%
+  filter(!is.na(combined_local_rel_period)) %>%
+  # Important modeling choice: duplicate storms are removed
+  filter(!period_has_other_storm) %>%
+  filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
+  check_period_support()
+
+sem_full_cont <- feols(
+  ntl_ihs ~ i(combined_local_rel_period, event_storm, ref = -1)  |
+    geoid_storm_id + storm_period_id,
+  data = df_full_cont,
+  weights = ~ (hq_share_mean * stack_weight),
+  vcov = ~ GEOID + storm_name
+)
+
+iplot(sem_full_cont)
+#summary(sem_full_cont)
+
+## FULL MODEL CONTINUOUS TREATMENT BINNED EXPOSURE
+
+df_full_binned <- stacked_event_panel %>%
+  filter(!is.na(combined_local_rel_period)) %>%
+  # Important modeling choice: duplicate storms are removed
+  filter(!period_has_other_storm) %>%
+  filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
+  check_period_support()
+
+sem_full_binned <- feols(
+  ntl_ihs ~
+    i(combined_local_rel_period, treated_low, ref = -5) +
+    i(combined_local_rel_period, treated_medium, ref = -5) +
+    i(combined_local_rel_period, treated_high, ref = -5) |
+    geoid_storm_id + storm_period_id,
+  data = df_full_binned,
+  weights = ~ (hq_share_mean * stack_weight),
+  vcov = ~ GEOID + storm_name
+)
+
+etable(sem_full_binned)
+
+iplot(
+  sem_full_binned,
+  ref.line = -1,
+  main = "Stacked event study",
+  xlab = "Relative period",
+  ylab = "Effect on asinh(nightlights)"
+)
+
+
+
+
+##!! FULL MODEL CONTINUOUS TREATMENT BINNED EXPOSURE AND COMBINED RELATIVE PRE-PERIODS 
+
+df_full_binned_prebase <- stacked_event_panel %>%
+  filter(!is.na(combined_local_rel_period)) %>%
+  # Important modeling choice: duplicate storms are removed
+  filter(!period_has_other_storm) %>%
+  filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
+  mutate(event_bin = case_when(
+    between(combined_local_rel_period, -8, -3) ~ "pre_-8_-3",
+    between(combined_local_rel_period, -2, -1) ~ "pre_-2_-1",
+    combined_local_rel_period == 0 ~ "impact_0",
+    between(combined_local_rel_period, 1, 3) ~ "post_1_3",
+    between(combined_local_rel_period, 4, 8) ~ "post_4_8",
+    between(combined_local_rel_period, 9, 20) ~ "post_9_20",
+    TRUE ~ NA_character_
+    ),
+    event_bin = factor(event_bin, levels = event_bin_levels, ordered = TRUE)
+  ) %>%
+  filter(!is.na(event_bin)) %>%
+  check_period_support()
+
+# event_bin = binned periods / treated_* = separate coefficients per exposure group
+sem_full_binned_prebase <- feols(
+  ntl_ihs ~
+    i(event_bin, treated_low, ref = "pre_-8_-3") +
+    i(event_bin, treated_medium, ref = "pre_-8_-3") +
+    i(event_bin, treated_high, ref = "pre_-8_-3") |
+    geoid_storm_id + storm_period_id,
+  data = df_full_binned_prebase,
+  weights = ~ (hq_share_mean * stack_weight),
+  vcov = ~ GEOID + storm_name
+)
+
+etable(sem_full_binned_prebase)
+
+iplot(
+  sem_full_binned_prebase,
+  ref.line = -1,
+  main = "Stacked event study - binned exposure and periods",
+  xlab = "Relative period",
+  ylab = "Effect on asinh(nightlights)"
+)
+
+## BOOTSTRAPPING
+
+#boot_t0_storm <- boottest(
+#  sem_full_binary,
+#  param = "combined_local_rel_period::0:treated_for_event",
+#  clustid = "storm_name",
+#  B = 9999,
+#  type = "rademacher",
+#  impose_null = TRUE,
+#  conf_int = TRUE
+#)
+#
+#boot_t0_storm
+
+
+
+
+
+# MANUEL
 
 # boottest() dummy-expands fixest fixed effects when the model uses weights.
 # Residualizing first keeps the weighted model equivalent without the huge FE matrix.
@@ -211,7 +415,7 @@ boot_t0 <- boottest(
   conf_int = TRUE
 )
 
-summary(boot_t0)
+#summary(boot_t0)
 boot_t0_tidy <- generics::tidy(boot_t0) %>%
   mutate(term = str_replace(term, fixed(boot_t0_lm_param), boot_t0_param))
 boot_t0_tidy
@@ -225,62 +429,12 @@ gc()
 
 
 
-summary(sem_full_binary)
-
-iplot(
-  sem_full_binary,
-  ref.line = -1,
-  main = "Stacked event study",
-  xlab = "Relative period",
-  ylab = "Effect on asinh(nightlights)"
-)
-
-## FULL MODEL BINNED CONTINUOUS TREATMENT
-
-df_full_binned <- stacked_event_panel %>%
-  filter(!is.na(combined_local_rel_period)) %>%
-  # Important modeling choice: duplicate storms are removed
-  filter(!period_has_other_storm) %>%
-  filter(!is.na(ntl_ihs), !is.na(hq_share_mean))
-
-sem_full_binned <- feols(
-  ntl_ihs ~
-    i(combined_local_rel_period, treated_low, ref = -1) +
-    i(combined_local_rel_period, treated_medium, ref = -1) +
-    i(combined_local_rel_period, treated_high, ref = -1) |
-    geoid_storm_id + storm_period_id,
-  data = df_full_binned,
-  weights = ~ (hq_share_mean * stack_weight),
-  vcov = ~ GEOID + storm_name
-)
-
-summary(sem_full_binned)
-
-## FULL MODEL CONTINUOUS TREATMENT
-
-df_full_cont <- stacked_event_panel %>%
-  filter(!is.na(combined_local_rel_period)) %>%
-  # Important modeling choice: duplicate storms are removed
-  filter(!period_has_other_storm) %>%
-  filter(!is.na(ntl_ihs), !is.na(hq_share_mean))
-
-sem_full_cont <- feols(
-  ntl_ihs ~ i(combined_local_rel_period, event_storm, ref = -1)  |
-    geoid_storm_id + storm_period_id,
-  data = df_full_cont,
-  weights = ~ (hq_share_mean * stack_weight),
-  vcov = ~ GEOID + storm_name
-)
-
-summary(sem_full_cont)
-
-
 ## FULL MODEL TABLES AND GRAPHS
 
 print("Setting up main tables and graphs")
 
 etable(
-  sem_full_binary, sem_full_binned, sem_full_cont,
+  sem_full_binary, sem_full_binned, sem_full_cont, sem_full_prebase,
   tex = FALSE,
   file = "Output/model_tables/table_2_main_results.txt",
   replace = TRUE
@@ -294,29 +448,6 @@ etable(
 
 
 
-## BINNED
-
-df_prebase <- df_full_binary %>%
-  mutate(event_bin = case_when(
-    between(combined_local_rel_period, -8, -3) ~ "pre_-8_-3",
-    between(combined_local_rel_period, -2, -1) ~ "pre_-2_-1",
-    combined_local_rel_period == 0 ~ "impact_0",
-    between(combined_local_rel_period, 1, 3) ~ "post_1_3",
-    between(combined_local_rel_period, 4, 8) ~ "post_4_8",
-    between(combined_local_rel_period, 9, 20) ~ "post_9_20",
-    TRUE ~ NA_character_
-  ))
-
-sem_prebase <- feols(
-  ntl_ihs ~ i(event_bin, treated_for_event, ref = "pre_-8_-3") |
-    geoid_storm_id + storm_period_id,
-  data = filter(df_prebase, !is.na(event_bin)),
-  weights = ~ (hq_share_mean * stack_weight),
-  vcov = ~ GEOID + storm_name
-)
-
-summary(sem_prebase)
-coefplot(sem_prebase)
 
 
 
@@ -336,7 +467,8 @@ df_rob_ref1 <- stacked_event_panel %>%
   filter(!is.na(combined_local_rel_period)) %>%
   # Important modeling choice: duplicate storms are removed
   filter(!period_has_other_storm) %>%
-  filter(!is.na(ntl_ihs), !is.na(hq_share_mean))
+  filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
+  check_period_support()
 
 sem_rob_ref1 <- feols(
   ntl_ihs ~ i(combined_local_rel_period, treated_for_event, ref = -2) |
@@ -346,7 +478,7 @@ sem_rob_ref1 <- feols(
   vcov = ~ GEOID + storm_name
 )
 
-summary(sem_rob_ref1)
+#summary(sem_rob_ref1)
 
 
 ## CHECK FOR MULTI STORM EFFECTS
@@ -355,7 +487,8 @@ df_rob_nomulti <- stacked_event_panel %>%
   group_by(storm_name, GEOID) %>%
   mutate(other_storm_in_window = any(period_has_other_storm)) %>%
   ungroup() %>%
-  filter(!other_storm_in_window)
+  filter(!other_storm_in_window) %>%
+  check_period_support()
 
 sem_rob_nomulti <- feols(
   ntl_ihs ~ i(combined_local_rel_period, treated_for_event, ref = -1) |
@@ -365,13 +498,14 @@ sem_rob_nomulti <- feols(
   vcov = ~ GEOID + storm_name
 )
 
-summary(sem_rob_nomulti)
+#summary(sem_rob_nomulti)
 
 # Shorter window sample: less chance of contamination
 df_rob_short <- stacked_event_panel %>%
-  filter(rel_period >= -4, rel_period <= 8) %>%
+  filter(combined_local_rel_period >= -4, combined_local_rel_period <= 8) %>%
   # Important modeling choice: duplicate storms are removed
-  filter(!period_has_other_storm)
+  filter(!period_has_other_storm) %>%
+  check_period_support()
 
 sem_rob_short <- feols(
   ntl_ihs ~ i(combined_local_rel_period, treated_for_event, ref = -1) |
@@ -381,7 +515,7 @@ sem_rob_short <- feols(
   vcov = ~ GEOID + storm_name
 )
 
-summary(sem_rob_short)
+#summary(sem_rob_short)
 
 
 
@@ -391,13 +525,16 @@ summary(sem_rob_short)
 df_rob_loo <- stacked_event_panel %>%
   # Important modeling choice: duplicate storms are removed
   filter(!period_has_other_storm) %>%
-  filter(!is.na(ntl_ihs), !is.na(hq_share_mean))
+  filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
+  check_period_support()
 
 
 storms <- unique(df_rob_loo$storm_name)
 
 sem_rob_loo <- map_dfr(storms, function(s) {
-  df_s <- df_rob_loo %>% filter(storm_name != s)
+  df_s <- df_rob_loo %>%
+    filter(storm_name != s) %>%
+    check_period_support()
 
   mod_s <- feols(
     ntl_ihs ~ i(combined_local_rel_period, treated_for_event, ref = -1) |
@@ -424,7 +561,8 @@ df_rob_loo_s <- stacked_event_panel %>%
   filter(!period_has_other_storm) %>%
   filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
   left_join(storm_sizes, by = "storm_name") %>%
-  filter(n_treated_geo >= 30)
+  filter(n_treated_geo >= 30) %>%
+  check_period_support()
 
 sem_rob_loo_s <- feols(
   ntl_ihs ~ i(combined_local_rel_period, treated_for_event, ref = -1) |
@@ -434,7 +572,7 @@ sem_rob_loo_s <- feols(
   vcov = ~ GEOID + storm_name
 )
 
-summary(sem_rob_loo_s)
+#summary(sem_rob_loo_s)
 
 
 
@@ -448,7 +586,8 @@ df_rob_nopr <- stacked_event_panel %>%
   # Important modeling choice: duplicate storms are removed
   filter(!period_has_other_storm) %>%
   filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
-  filter(!startsWith(GEOID, "72"))
+  filter(!startsWith(GEOID, "72")) %>%
+  check_period_support()
 
 sem_rob_nopr <- feols(
   ntl_ihs ~ i(combined_local_rel_period, treated_for_event, ref = -1) |
@@ -458,7 +597,7 @@ sem_rob_nopr <- feols(
   vcov = ~ GEOID + storm_name
 )
 
-summary(sem_rob_nopr)
+#summary(sem_rob_nopr)
 
 
 
@@ -469,16 +608,18 @@ df_rob_noqf <- stacked_event_panel %>%
   filter(!is.na(combined_local_rel_period)) %>%
   # Important modeling choice: duplicate storms are removed
   filter(!period_has_other_storm) %>%
-  filter(!is.na(ntl_ihs), !is.na(hq_share_mean))
+  filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
+  check_period_support()
 
 sem_rob_noqf <- feols(
   ntl_ihs ~ i(combined_local_rel_period, treated_for_event, ref = -1) |
     geoid_storm_id + storm_period_id,
   data = df_rob_noqf,
+  weights = ~ stack_weight,
   vcov = ~ GEOID + storm_name
 )
 
-summary(sem_rob_noqf)
+#summary(sem_rob_noqf)
 
 
 
@@ -489,7 +630,8 @@ df_rob_hqonly <- stacked_event_panel %>%
   # Important modeling choice: duplicate storms are removed
   filter(!period_has_other_storm) %>%
   filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
-  filter(hq_share_mean >= 0.6)
+  filter(hq_share_mean >= 0.6) %>%
+  check_period_support()
 
 sem_rob_hqonly <- feols(
   ntl_ihs ~ i(combined_local_rel_period, treated_for_event, ref = -1) |
@@ -499,7 +641,7 @@ sem_rob_hqonly <- feols(
   vcov = ~ GEOID + storm_name
 )
 
-summary(sem_rob_hqonly)
+#summary(sem_rob_hqonly)
 
 
 
@@ -511,7 +653,8 @@ df_rob_meanntl <- stacked_event_panel %>%
   filter(!is.na(combined_local_rel_period)) %>%
   # Important modeling choice: duplicate storms are removed
   filter(!period_has_other_storm) %>%
-  filter(!is.na(ntl_ihs), !is.na(hq_share_mean))
+  filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
+  check_period_support()
 
 sem_rob_meanntl <- feols(
   ntl_mean ~ i(combined_local_rel_period, treated_for_event, ref = -1) |
@@ -521,7 +664,7 @@ sem_rob_meanntl <- feols(
   vcov = ~ GEOID + storm_name
 )
 
-summary(sem_rob_meanntl)
+#summary(sem_rob_meanntl)
 
 
 # log ntls
@@ -529,7 +672,8 @@ df_rob_logntl <- stacked_event_panel %>%
   filter(!is.na(combined_local_rel_period)) %>%
   # Important modeling choice: duplicate storms are removed
   filter(!period_has_other_storm) %>%
-  filter(!is.na(ntl_ihs), !is.na(hq_share_mean))
+  filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
+  check_period_support()
 
 sem_rob_logntl <- feols(
   ntl_log ~ i(combined_local_rel_period, treated_for_event, ref = -1) |
@@ -539,7 +683,7 @@ sem_rob_logntl <- feols(
   vcov = ~ GEOID + storm_name
 )
 
-summary(sem_rob_logntl)
+#summary(sem_rob_logntl)
 
 
 
@@ -549,7 +693,8 @@ df_rob_nofes <- stacked_event_panel %>%
   filter(!is.na(combined_local_rel_period)) %>%
   # Important modeling choice: duplicate storms are removed
   filter(!period_has_other_storm) %>%
-  filter(!is.na(ntl_ihs), !is.na(hq_share_mean))
+  filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
+  check_period_support()
 
 sem_rob_nofes <- feols(
   ntl_ihs ~ i(combined_local_rel_period, treated_for_event, ref = -1),
@@ -558,7 +703,7 @@ sem_rob_nofes <- feols(
   vcov = ~ GEOID + storm_name
 )
 
-summary(sem_rob_nofes)
+#summary(sem_rob_nofes)
 
 
 
@@ -605,7 +750,8 @@ df_rob_era5 <- stacked_event_panel %>%
   filter(!is.na(combined_local_rel_period)) %>%
   # Important modeling choice: duplicate storms are removed
   filter(!period_has_other_storm) %>%
-  filter(!is.na(max_windgust_max_mps))
+  filter(!is.na(max_windgust_max_mps)) %>%
+  check_period_support()
 
 sem_rob_era5_wind <- feols(
   max_windgust_max_mps ~ i(combined_local_rel_period, treated_for_event, ref = -1) |
@@ -628,7 +774,8 @@ df_rob_era5_pre <- stacked_event_panel %>%
   filter(!is.na(combined_local_rel_period)) %>%
   # Important modeling choice: duplicate storms are removed
   filter(!period_has_other_storm) %>%
-  filter(!is.na(ntl_ihs), !is.na(hq_share_mean))
+  filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
+  check_period_support()
 
 df_rob_era5_pre_balanced <- df_rob_era5_pre %>%
   filter(combined_local_rel_period >= -8, combined_local_rel_period <= -2) %>%
@@ -692,7 +839,8 @@ df_rob_ear5_no_other_weather <- stacked_event_panel %>%
   filter(!is.na(combined_local_rel_period)) %>%
   # Important modeling choice: duplicate storms are removed
   filter(!period_has_other_storm) %>%
-  filter(!is.na(ntl_ihs), !is.na(hq_share_mean))
+  filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
+  check_period_support()
 
 sem_rob_ear5_no_other_weather <- feols(
   ntl_ihs ~ i(combined_local_rel_period, treated_for_event, ref = -1) |
@@ -702,7 +850,7 @@ sem_rob_ear5_no_other_weather <- feols(
   vcov = ~ GEOID + storm_name
 )
 
-summary(sem_rob_ear5_no_other_weather)
+#summary(sem_rob_ear5_no_other_weather)
 
 
 ## ROBUSTNESS CHECKS WITH ERA5 TABLES AND GRAPHS
@@ -758,107 +906,68 @@ balance_era5_plot
 
 print("Running models for individual storms")
 
-# Check for unsupported periods
-# i.e those periods that only have treated observations or only control observations
-check_period_support <- function(data) {
-
-  maria_unsupported_rel_periods <- data %>%
-    group_by(rel_period) %>%
-    summarise(
-      # are there any treated observations in this period?
-      has_treated = any(treated_for_event),
-      # are there any control observations in this period?
-      has_control = any(!treated_for_event),
-      .groups = "drop"
-    ) %>%
-    filter(!has_treated | !has_control) %>%
-    pull(rel_period)
-
-  if (length(maria_unsupported_rel_periods) > 0) {
-    message(
-      "Dropping unsupported Maria relative periods: ",
-      paste(maria_unsupported_rel_periods, collapse = ", ")
-    )
-
-    data <- data %>%
-      filter(!rel_period %in% maria_unsupported_rel_periods)
-  }
-
-  return(data)
-
-}
-
-
 # MARIA
 
 print("Running model for Maria")
 
-df_maria_nosupport <- stacked_event_panel %>%
+df_event_maria <- stacked_event_panel %>%
   filter(!is.na(combined_local_rel_period)) %>%
   # Important modeling choice: duplicate storms are removed
   filter(!period_has_other_storm) %>%
   filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
-  filter(storm_name == "MARIA-2017")
-
-df_event_maria <- check_period_support(df_maria_nosupport)
+  filter(storm_name == "MARIA-2017") %>%
+  check_period_support()
 
 sem_maria <- feols(
-  ntl_ihs ~ i(rel_period, treated_for_event, ref = -1) + hq_share_mean |
+  ntl_ihs ~ i(rel_period, treated_for_event, ref = -3) |
     GEOID + period_id,
   data = df_event_maria,
-  weights = ~ (hq_share_mean * stack_weight),
   vcov = ~ GEOID
 )
 
-summary(sem_maria)
-
-coefplot(sem_maria)
+#summary(sem_maria)
 
 # IRMA
 
 print("Running model for Irma")
 
-df_irma_nosupport <- stacked_event_panel %>%
+df_event_irma <- stacked_event_panel %>%
   filter(!is.na(combined_local_rel_period)) %>%
   # Important modeling choice: duplicate storms are removed
   filter(!period_has_other_storm) %>%
   filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
-  filter(storm_name == "IRMA-2017")
-
-df_event_irma <- check_period_support(df_irma_nosupport)
+  filter(storm_name == "IRMA-2017") %>%
+  check_period_support()
 
 sem_irma <- feols(
-  ntl_ihs ~ i(rel_period, treated_for_event, ref = -1) + hq_share_mean |
+  ntl_ihs ~ i(rel_period, treated_for_event, ref = -1) |
     GEOID + period_id,
   data = df_event_irma,
-  weights = ~ (hq_share_mean * stack_weight),  
   vcov = ~ GEOID
 )
 
-summary(sem_irma)
+#summary(sem_irma)
 
 # MICHAEL
 
 print("Running model for Michael")
 
-df_michael_nosupport <- stacked_event_panel %>%
+df_event_michael <- stacked_event_panel %>%
   filter(!is.na(combined_local_rel_period)) %>%
   # Important modeling choice: duplicate storms are removed
   filter(!period_has_other_storm) %>%
   filter(!is.na(ntl_ihs), !is.na(hq_share_mean)) %>%
-  filter(storm_name == "MICHAEL-2018")
-
-df_event_michael <- check_period_support(df_michael_nosupport)
+  filter(storm_name == "MICHAEL-2018") %>%
+  check_period_support()
 
 sem_michael <- feols(
-  ntl_ihs ~ i(rel_period, treated_for_event, ref = -1) + hq_share_mean |
+  ntl_ihs ~ i(rel_period, treated_for_event, ref = -1) |
     GEOID + period_id,
   data = df_event_michael,
-  weights = ~ (hq_share_mean * stack_weight),
   vcov = ~ GEOID
 )
 
-summary(sem_michael)
+#summary(sem_michael)
 
 
 ## DESCRIPTIVE MODELS
@@ -878,9 +987,7 @@ mod_desc_maria <- feols(
   weights = ~ hq_share_mean
 )
 
-summary(mod_desc_maria)
-
-
+#summary(mod_desc_maria)
 
 # IRMA
 
@@ -897,9 +1004,7 @@ mod_desc_irma <- feols(
   weights = ~ hq_share_mean
 )
 
-summary(mod_desc_irma)
-
-
+#summary(mod_desc_irma)
 
 # MICHAEL
 
@@ -916,11 +1021,13 @@ mod_desc_michael <- feols(
   weights = ~ hq_share_mean
 )
 
-summary(mod_desc_michael)
+#summary(mod_desc_michael)
 
 
 
 ## TABLES AND GRAPHS FOR DESCRIPTIVE MODELS
+
+etable(mod_desc_maria)
 
 etable(mod_desc_maria, mod_desc_irma, mod_desc_michael)
 
@@ -944,3 +1051,27 @@ iplot(
   main = "Linear dynamic Model for Hurricane Michael",
   xlab = "Relative period",
   ylab = "Effect on asinh(nightlights)")
+
+
+
+### PROGRESS UPDATE ARTIFACTS
+
+print("Exporting progress-update figures and table")
+
+save_iplot <- function(mod, file, ...) {
+  png(file.path("Output/model_graphs", file), width = 1600, height = 1000, res = 200)
+  iplot(mod, ref.line = -1, xlab = "Relative period", ylab = "Effect on asinh(nightlights)", ...)
+  dev.off()
+}
+
+save_iplot(sem_full_binary,         "fig_full_binary_granular.png", main = "Binary treatment - dynamic")
+save_iplot(sem_full_prebase,        "fig_full_binary_binned.png",   main = "Binary treatment - binned periods")
+save_iplot(sem_full_binned,         "fig_full_dose_granular.png",   main = "Exposure dose-response - dynamic")
+save_iplot(sem_full_binned_prebase, "fig_full_dose_binned.png",     main = "Exposure dose-response - binned periods")
+save_iplot(sem_maria,               "fig_maria_event.png",          main = "Maria - event study (with controls)")
+save_iplot(mod_desc_maria,          "fig_maria_descriptive.png",    main = "Maria - descriptive (treated only)")
+
+etable(
+  sem_full_prebase, sem_full_binned_prebase,
+  file = "Output/model_tables/table_progress_update.txt", replace = TRUE
+)

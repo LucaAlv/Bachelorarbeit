@@ -29,8 +29,6 @@ library(data.table)
 
 
 
-# For now do everything for 2016 -> 2018 for Puerto Rico
-
 #### Set relevant states and load county shapefiles ####
 
 print("Loading shapefiles")
@@ -49,7 +47,6 @@ states_names_list <- c(
   "Florida", "Texas", "South Carolina", "North Carolina", "Louisiana", "Puerto Rico"
   )
 state_file_prefixes <- c("fl", "tx", "sc", "nc", "la", "pr")
-#state_file_prefixes <- c("pr")
 
 # Use the tigris package to pull USCensus county shapefiles
 
@@ -173,7 +170,7 @@ read_panel_rds_files <- function(file_grid, label) {
 
 print("Preparing output panel")
 
-panel_years <- 2016:2018
+panel_years <- 2015:2020
 panel_start_date <- as.Date(paste0(min(panel_years), "-01-01"))
 panel_end_date <- as.Date(paste0(max(panel_years), "-12-31"))
 period_days <- 7L
@@ -182,11 +179,18 @@ period_days <- 7L
 # This function solves this by creating periods (that are very similar to weeks) but flow across years
 # Resulting in only one period (the last one) that may not have exactly seven days
 
-dates <- seq.Date(
-  from = panel_start_date,
-  to = panel_end_date,
-  by = "day"
-)
+
+dates <- c(
+  seq.Date(
+    from = panel_start_date,
+    to = panel_end_date,
+    by = "day"
+  ),
+  seq.Date(
+    from = as.Date("2024-01-01"),
+    to = as.Date("2024-12-31"),
+    by = "day"
+  ))
 
 # Set up "calendar" with period indizes for each seven day period
 time_calendar <- tibble(date = dates) %>%
@@ -223,7 +227,7 @@ time_join_keys <- c("GEOID", "period_id", "period_start", "period_end", "year")
 add_period_vars <- function(data) {
   data %>%
     mutate(date = as.Date(date)) %>%
-    filter(date >= panel_start_date, date <= panel_end_date) %>%
+    filter(date >= panel_start_date, date <= panel_end_date | year(date)==2024 ) %>%
     select(-any_of(c("period_id", "period_start", "period_end", "year"))) %>%
     left_join(time_calendar, by = "date")
 }
@@ -884,13 +888,13 @@ attr(out_panel, "storm_period_event_panel") <- storm_period_event_panel_clean
 attr(out_panel, "storm_event_exposure_df") <- storm_event_exposure_df
 attr(out_panel, "event_window") <- event_window
 attr(out_panel, "treated_event_panel") <- treated_event_panel
-attr(out_panel, "treated_event_panel_geo") <- treated_event_panel_geo
+#attr(out_panel, "treated_event_panel_geo") <- treated_event_panel_geo
 attr(out_panel, "stacked_event_panel") <- stacked_event_panel
 
 saveRDS(out_panel, "Output/data_output/out_panel.rds")
-saveRDS(out_panel_geo, "Output/data_output/out_panel_geo.rds")
+#saveRDS(out_panel_geo, "Output/data_output/out_panel_geo.rds")
 saveRDS(storm_period_event_panel_clean, "Output/data_output/storm_period_event_panel.rds")
 saveRDS(storm_event_exposure_df, "Output/data_output/storm_event_exposure_df.rds")
 saveRDS(treated_event_panel, "Output/data_output/treated_event_panel.rds")
-saveRDS(treated_event_panel_geo, "Output/data_output/treated_event_panel_geo.rds")
+#saveRDS(treated_event_panel_geo, "Output/data_output/treated_event_panel_geo.rds")
 saveRDS(stacked_event_panel, "Output/data_output/stacked_event_panel.rds")
